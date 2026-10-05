@@ -1,0 +1,224 @@
+blueprint:
+  name: NFC-Musikbox – Karte
+  description: >-
+    Eine Karte, ein Medium. Zwei Betriebsarten:
+    "Tonie" – die Musik läuft nur, solange die Karte auf dem Lesegerät liegt.
+    Entfernen pausiert und merkt sich die Stelle (Titel und Sekunde), Auflegen
+    setzt dort fort, auch wenn zwischendurch eine andere Karte lief.
+    "Einfach" – Auflegen startet das Medium von vorne, Entfernen tut nichts und
+    es wird keine Position gemerkt. Gedacht für Sonos. Am besten legst du Karten
+    im NFC-Karten-Manager an.
+  domain: automation
+  author: Christian Seeger
+  homeassistant:
+    min_version: 2025.6.0
+  input:
+    card:
+      name: Karte
+      description: Die NFC-Karte (Tag).
+      selector:
+        entity:
+          domain: [tag]
+    media:
+      name: Medium
+      description: Album, Playlist, Favorit oder Radiosender, über den Medien-Browser gewählt.
+      selector:
+        media: {}
+    mode_select:
+      name: Betriebsart
+      description: >-
+        Tonie = nur solange die Karte liegt, Position wird gemerkt.
+        Einfach = Karte startet die Wiedergabe, sonst nichts.
+      default: tonie
+      selector:
+        select:
+          mode: list
+          options:
+            - value: tonie
+              label: Tonie (läuft nur solange die Karte liegt, Position merken)
+            - value: simple
+              label: Einfach (Karte startet nur die Wiedergabe)
+    memory:
+      name: Positions-Speicher
+      description: >-
+        Text-Helfer (input_text), in dem sich diese Karte die letzte Stelle merkt.
+        Nur für die Betriebsart Tonie nötig, pro Karte ein eigener Helfer.
+      default: ""
+      selector:
+        entity:
+          domain: [input_text]
+    scanners:
+      name: Lesegeräte und Lautsprecher
+      description: >-
+        Pro Lesegerät: der Sensor "Karte auf dem Reader" und der Lautsprecher,
+        der zu diesem Lesegerät gehört.
+      default: []
+      selector:
+        object:
+          multiple: true
+          label_field: player
+          fields:
+            tag_sensor:
+              required: true
+              label: Sensor "Karte auf dem Reader"
+              selector:
+                entity:
+                  domain: [sensor]
+            player:
+              required: true
+              label: Lautsprecher
+              selector:
+                entity:
+                  domain: [media_player]
+    tag_sensors:
+      name: Sensoren "Karte auf dem Reader" (für den Auslöser)
+      description: Dieselben Sensoren wie oben, nur als Liste für den Auslöser.
+      default: []
+      selector:
+        entity:
+          domain: [sensor]
+          multiple: true
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  card_entity: !input card
+  memory_entity: !input memory
+  card_mode: !input mode_select
+  scanners: !input scanners
+  tag_id: "{{ state_attr(card_entity, 'tag_id') | default('', true) }}"
+  from_id: "{{ trigger.from_state.state if trigger.from_state is not none else '' }}"
+  to_id: "{{ trigger.to_state.state if trigger.to_state is not none else '' }}"
+  scanner: "{{ scanners | selectattr('tag_sensor', 'eq', trigger.entity_id) | list | first | default(none) }}"
+  player: "{{ scanner.player if scanner is not none else '' }}"
+
+triggers:
+  - trigger: state
+    entity_id: !input tag_sensors
+
+conditions:
+  - condition: template
+    value_template: "{{ player != '' and tag_id != '' }}"
+
+actions:
+  - choose:
+      # Tonie: Karte entfernt (oder gewechselt) -> Position merken, ggf. pausieren
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ card_mode == 'tonie' and from_id == tag_id and to_id != tag_id
+                 and to_id not in ['unavailable', 'unknown', ''] }}
+        sequence:
+          - variables:
+              pstate: "{{ states(player) }}"
+              updated: "{{ as_datetime(state_attr(player, 'media_position_updated_at')) if state_attr(player, 'media_position_updated_at') else none }}"
+              elapsed: "{{ (now() - updated).total_seconds() if pstate == 'playing' and updated is not none else 0 }}"
+              pos: "{{ ((state_attr(player, 'media_position') | float(0)) + elapsed) | round(0) | int }}"
+              q: "{{ state_attr(player, 'queue_position') | int(0) }}"
+              title: "{{ (state_attr(player, 'media_title') | default('', true)) | string | truncate(60, True, '') }}"
+          - if:
+              - condition: template
+                value_template: "{{ pstate in ['playing', 'paused'] }}"
+            then:
+              - action: input_text.set_value
+                target:
+                  entity_id: !input memory
+                data:
+                  value: "{{ {'q': q, 'p': pos, 't': title} | to_json }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ to_id == 'none' and pstate == 'playing' }}"
+                then:
+                  - action: media_player.media_pause
+                    target:
+                      entity_id: "{{ player }}"
+            else:
+              - action: input_text.set_value
+                target:
+                  entity_id: !input memory
+                data:
+                  value: ""
+      # Einfach: Karte aufgelegt -> Medium starten, sonst nichts
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ card_mode == 'simple' and to_id == tag_id and from_id != to_id
+                 and from_id not in ['unavailable', 'unknown', ''] }}
+        sequence:
+          - action: media_player.play_media
+            target:
+              entity_id: "{{ player }}"
+            data:
+              media: !input media
+      # Tonie: Karte aufgelegt -> fortsetzen oder neu starten und Stelle anfahren
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ card_mode == 'tonie' and to_id == tag_id and from_id != to_id
+                 and from_id not in ['unavailable', 'unknown', ''] }}
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ from_id != 'none' }}"
+            then:
+              - delay:
+                  milliseconds: 600
+          - variables:
+              mem: "{{ states(memory_entity) | from_json(default={}) }}"
+              mem_q: "{{ mem.q | int(0) if mem is mapping else 0 }}"
+              mem_p: "{{ mem.p | int(0) if mem is mapping else 0 }}"
+              mem_t: "{{ mem.t | default('', true) if mem is mapping else '' }}"
+              pstate: "{{ states(player) }}"
+              cur_q: "{{ state_attr(player, 'queue_position') | int(0) }}"
+              cur_t: "{{ (state_attr(player, 'media_title') | default('', true)) | string | truncate(60, True, '') }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >-
+                      {{ mem_t != '' and pstate == 'paused'
+                         and cur_t == mem_t and cur_q == mem_q }}
+                sequence:
+                  - action: media_player.media_play
+                    target:
+                      entity_id: "{{ player }}"
+            default:
+              - action: media_player.play_media
+                target:
+                  entity_id: "{{ player }}"
+                data:
+                  media: !input media
+              - if:
+                  - condition: template
+                    value_template: "{{ mem_q > 1 or mem_p > 5 }}"
+                then:
+                  - delay: 1
+                  - wait_template: "{{ is_state(player, 'playing') and state_attr(player, 'queue_position') | int(0) == 1 }}"
+                    timeout: 20
+                    continue_on_timeout: false
+                  - if:
+                      - condition: template
+                        value_template: "{{ mem_q > 1 }}"
+                    then:
+                      - action: sonos.play_queue
+                        target:
+                          entity_id: "{{ player }}"
+                        data:
+                          queue_position: "{{ mem_q - 1 }}"
+                      - wait_template: "{{ state_attr(player, 'queue_position') | int(0) == mem_q }}"
+                        timeout: 10
+                        continue_on_timeout: true
+                  - repeat:
+                      sequence:
+                        - action: media_player.media_seek
+                          target:
+                            entity_id: "{{ player }}"
+                          data:
+                            seek_position: "{{ mem_p }}"
+                          continue_on_error: true
+                        - delay: 2
+                      until:
+                        - condition: template
+                          value_template: >-
+                            {{ ((state_attr(player, 'media_position') | float(0)) - mem_p) | abs < 10
+                               or repeat.index >= 3 }}

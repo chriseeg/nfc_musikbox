@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
@@ -11,6 +11,9 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 import voluptuous as vol
 
 from .const import DOMAIN
+
+if TYPE_CHECKING:
+    from . import NfcMusikboxData
 from .store import CARD_MODES, Card, CardStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -18,6 +21,9 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_ASSIGN_CARD = "assign_card"
 SERVICE_REMOVE_CARD = "remove_card"
 SERVICE_RESET_POSITION = "reset_position"
+SERVICE_PLAY_CARD = "play_card"
+ATTR_READER = "reader"
+ATTR_RESUME = "resume"
 
 ATTR_TAG_ID = "tag_id"
 ATTR_NAME = "name"
@@ -47,14 +53,46 @@ ASSIGN_SCHEMA = vol.Schema(
     }
 )
 TAG_SCHEMA = vol.Schema({vol.Required(ATTR_TAG_ID): cv.string})
+PLAY_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_TAG_ID): cv.string,
+        vol.Optional(ATTR_READER): cv.string,
+        vol.Optional(ATTR_RESUME, default=False): cv.boolean,
+    }
+)
 
 
-def _store(hass: HomeAssistant) -> CardStore:
+def loaded_data(hass: HomeAssistant) -> NfcMusikboxData:
+    """Laufzeitdaten des (einzigen) geladenen Eintrags."""
     entries = hass.config_entries.async_loaded_entries(DOMAIN)
     if not entries:
         raise ServiceValidationError(translation_domain=DOMAIN, translation_key="not_loaded")
-    store: CardStore = entries[0].runtime_data.store
-    return store
+    data: NfcMusikboxData = entries[0].runtime_data
+    return data
+
+
+def _store(hass: HomeAssistant) -> CardStore:
+    return loaded_data(hass).store
+
+
+def start_test_playback(
+    hass: HomeAssistant, tag_id: str, reader_id: str | None, resume: bool
+) -> str:
+    """Karte auf dem Lautsprecher eines Lesegeräts abspielen. Liefert die Subentry-ID."""
+    data = loaded_data(hass)
+    card = data.store.cards.get(tag_id)
+    if card is None or card.media is None:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="unknown_card",
+            translation_placeholders={"tag_id": tag_id},
+        )
+    candidates = [reader_id] if reader_id else [r for r in data.controllers if card.works_on(r)]
+    controller = next((data.controllers[r] for r in candidates if r in data.controllers), None)
+    if controller is None:
+        raise ServiceValidationError(translation_domain=DOMAIN, translation_key="no_reader")
+    controller.play_card(card, resume=resume)
+    return controller.reader.subentry_id
 
 
 def _reader_subentries(hass: HomeAssistant, device_ids: list[str]) -> list[str]:
@@ -113,6 +151,14 @@ def async_setup_services(hass: HomeAssistant) -> None:
         store = _store(hass)
         store.set_position(_normalize_tag(call.data[ATTR_TAG_ID]), None)
 
+    async def play_card(call: ServiceCall) -> None:
+        reader = call.data.get(ATTR_READER)
+        reader_id = _reader_subentries(hass, [reader])[0] if reader else None
+        start_test_playback(
+            hass, _normalize_tag(call.data[ATTR_TAG_ID]), reader_id, call.data[ATTR_RESUME]
+        )
+
+    hass.services.async_register(DOMAIN, SERVICE_PLAY_CARD, play_card, PLAY_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_ASSIGN_CARD, assign_card, ASSIGN_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_REMOVE_CARD, remove_card, TAG_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_RESET_POSITION, reset_position, TAG_SCHEMA)

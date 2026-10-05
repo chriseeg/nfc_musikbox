@@ -68,6 +68,23 @@
     "sensor": {
       "current_card": {
         "name": "Current card"
+      },
+      "position": {
+        "name": "Remembered position"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Enabled"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "tonie": "Tonie",
+          "simple": "Simple"
+        }
       }
     }
   },
@@ -121,6 +138,24 @@
           "description": "Card ID."
         }
       }
+    },
+    "play_card": {
+      "name": "Test card",
+      "description": "Plays a card's media on a reader's speaker without the card on the reader.",
+      "fields": {
+        "tag_id": {
+          "name": "Tag ID",
+          "description": "Card ID."
+        },
+        "reader": {
+          "name": "Reader",
+          "description": "Empty = first matching reader."
+        },
+        "resume": {
+          "name": "Resume",
+          "description": "Resume at the remembered position (like placing the card) instead of from the start."
+        }
+      }
     }
   },
   "selector": {
@@ -140,6 +175,9 @@
     },
     "unknown_reader": {
       "message": "Device {device} is not an NFC music box reader."
+    },
+    "no_reader": {
+      "message": "No matching reader for this card."
     }
   }
 }

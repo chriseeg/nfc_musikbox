@@ -5,7 +5,7 @@ ESPHome-NFC-Leser (PN532, zwei Tasten) mit einem Lautsprecher und merkt sich pro
 Karte, wo die Wiedergabe stand – wie bei einer Tonie-Box.
 
 > **Status:** in Entwicklung. Fertig: Einrichtung, Wiedergabe-Logik (Tonie/Einfach),
-> Tasten, LED und Dienste zum Zuordnen. Es folgt die Oberfläche (M4).
+> Tasten, LED, Oberfläche „Musikkarten“. Es folgen Migration und Doku (M5).
 
 ## Voraussetzungen
 
@@ -62,11 +62,25 @@ Die LED zeigt den Zustand des Lautsprechers (Play-LED an = spielt, pulsiert = Pa
 Home Assistant sendet ihn bei jeder Zustandsänderung, beim Start und wenn sich das
 Lesegerät neu verbindet (`esphome.nfc_reader_online`).
 
-## Karten zuordnen (bis die Oberfläche fertig ist)
+## Oberfläche „Musikkarten“
 
-*Entwicklerwerkzeuge → Aktionen → „NFC-Musikbox: Karte zuordnen“* (`nfc_musikbox.assign_card`):
-Tag-ID (steht im Sensor „Aktuelle Karte“, wenn die Karte aufliegt), Medium über den
-Medien-Browser, Betriebsart, optional Lesegeräte.
+In der Seitenleiste erscheint **Musikkarten** (nur für Administratoren):
+
+- **Noch ohne Musik**: neu gescannte Karten (eine aufliegende Karte ist hervorgehoben) →
+  *Zuordnen*. Das ✕ entfernt die Karte aus der Liste und aus den Tags von Home Assistant.
+- **Zugeordnete Karten**: Cover, Medium, Lautsprecher, letzter Scan, gemerkte Stelle,
+  ▶ spielt die Karte zum Testen von vorne ab.
+- **Karte bearbeiten**: Name (wird auch in die Tag-Verwaltung übernommen), Medium über den
+  Medien-Browser, Betriebsart, gemerkte Stelle zurücksetzen, Lesegeräte, aktiv/inaktiv,
+  Test „Von vorne“ / „Fortsetzen“, Zuordnung löschen.
+- **Lesegeräte** (Zahnrad): Status und Lautsprecher je Lesegerät; Hinzufügen und Ändern
+  über die Integrationsseite.
+
+Pro Karte entsteht außerdem ein Gerät mit den Entitäten **Aktiv** (Schalter),
+**Betriebsart** (Auswahl) und **Gemerkte Stelle** (Sensor), z. B. für Automationen oder
+ein Dashboard.
+
+## Karten per Dienst zuordnen
 
 ```yaml
 action: nfc_musikbox.assign_card
@@ -80,7 +94,8 @@ data:
   mode: tonie
 ```
 
-Außerdem: `nfc_musikbox.remove_card`, `nfc_musikbox.reset_position`.
+Außerdem: `nfc_musikbox.remove_card`, `nfc_musikbox.reset_position`,
+`nfc_musikbox.play_card` (Test-Wiedergabe, optional mit Fortsetzen).
 
 ## Optionen
 

@@ -68,6 +68,23 @@
     "sensor": {
       "current_card": {
         "name": "Aktuelle Karte"
+      },
+      "position": {
+        "name": "Gemerkte Stelle"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Aktiv"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Betriebsart",
+        "state": {
+          "tonie": "Tonie",
+          "simple": "Einfach"
+        }
       }
     }
   },
@@ -121,6 +138,24 @@
           "description": "ID der Karte."
         }
       }
+    },
+    "play_card": {
+      "name": "Karte testen",
+      "description": "Spielt das Medium einer Karte auf dem Lautsprecher eines Lesegeräts ab, ohne dass die Karte aufliegt.",
+      "fields": {
+        "tag_id": {
+          "name": "Tag-ID",
+          "description": "ID der Karte."
+        },
+        "reader": {
+          "name": "Lesegerät",
+          "description": "Leer = erstes passendes Lesegerät."
+        },
+        "resume": {
+          "name": "Fortsetzen",
+          "description": "An der gemerkten Stelle fortsetzen (wie beim Auflegen) statt von vorne."
+        }
+      }
     }
   },
   "selector": {
@@ -140,6 +175,9 @@
     },
     "unknown_reader": {
       "message": "Gerät {device} ist kein Lesegerät der NFC-Musikbox."
+    },
+    "no_reader": {
+      "message": "Kein passendes Lesegerät für diese Karte."
     }
   }
 }

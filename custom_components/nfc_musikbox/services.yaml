@@ -45,3 +45,19 @@ reset_position:
       example: "CA-09-0C-05"
       selector:
         text:
+
+play_card:
+  fields:
+    tag_id:
+      required: true
+      example: "CA-09-0C-05"
+      selector:
+        text:
+    reader:
+      selector:
+        device:
+          integration: nfc_musikbox
+    resume:
+      default: false
+      selector:
+        boolean:

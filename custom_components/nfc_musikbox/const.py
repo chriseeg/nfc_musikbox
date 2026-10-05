@@ -54,5 +54,15 @@ DEFAULT_OPTIONS: Final[dict[str, float]] = {
     OPT_SKIP_BACK: 30.0,
 }
 
+# Dispatcher-Signal: Karten, Positionen, gesehene Tags oder Lesegeräte geändert
+SIGNAL_UPDATED: Final = f"{DOMAIN}_updated"
+# Dispatcher-Signal mit der Tag-ID einer neu angelegten Karte (Entitäten anlegen)
+SIGNAL_CARD_ADDED: Final = f"{DOMAIN}_card_added"
+
 STORAGE_KEY: Final = DOMAIN
 STORAGE_VERSION: Final = 1
+
+
+def card_device_identifier(tag_id: str) -> tuple[str, str]:
+    """Geräte-Identifier einer Karte."""
+    return (DOMAIN, f"card_{tag_id}")

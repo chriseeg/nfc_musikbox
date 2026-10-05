@@ -58,7 +58,6 @@ class ReaderController:
         self.reader = reader
         self.store = store
         self.options = options
-        self.player: PlayerBackend = create_backend(hass, reader.player, options)
         self._task: asyncio.Task[None] | None = None
         # Karte, deren Fortsetzen gerade läuft; ihre gemerkte Stelle ist dann noch gültig
         self._restoring: str | None = None
@@ -67,6 +66,11 @@ class ReaderController:
     @property
     def name(self) -> str:
         return self.reader.title
+
+    @property
+    def player(self) -> PlayerBackend:
+        """Backend bei jeder Nutzung wählen (Registry-Plattform kann sich ändern)."""
+        return create_backend(self.hass, self.reader.player, self.options)
 
     @callback
     def async_start(self) -> None:
@@ -129,6 +133,8 @@ class ReaderController:
     def handle_change(self, removed: str | None, placed: str | None) -> None:
         """Ereignis verarbeiten; bricht einen laufenden Ablauf ab."""
         _LOGGER.debug("%s: Karte %s -> %s", self.name, removed or "-", placed or "-")
+        if placed is not None:
+            self.store.mark_seen(placed, self.reader.subentry_id)
         interrupted_restore = self._restoring
         previous = self._task
         self._task = self.hass.async_create_background_task(
@@ -164,6 +170,30 @@ class ReaderController:
                 await self._on_placed(placed_card)
         except HomeAssistantError as err:
             _LOGGER.error("%s: Fehler bei %s -> %s: %s", self.name, removed, placed, err)
+
+    @callback
+    def play_card(self, card: Card, *, resume: bool) -> asyncio.Task[None]:
+        """Karte zum Testen abspielen, als läge sie auf; bricht laufende Abläufe ab."""
+        previous = self._task
+        self._task = self.hass.async_create_background_task(
+            self._run_play(card, resume, previous), f"nfc_musikbox {self.name} Test"
+        )
+        return self._task
+
+    async def _run_play(
+        self, card: Card, resume: bool, previous: asyncio.Task[None] | None
+    ) -> None:
+        if previous is not None and not previous.done():
+            previous.cancel()
+            await asyncio.wait([previous])
+        _LOGGER.info("%s: Test-Wiedergabe %s (fortsetzen: %s)", self.name, card.name, resume)
+        try:
+            if resume and card.mode == "tonie":
+                await self._on_placed(card)
+            elif card.media is not None:
+                await self.player.async_play_media(card.media)
+        except HomeAssistantError as err:
+            _LOGGER.error("%s: Test-Wiedergabe fehlgeschlagen: %s", self.name, err)
 
     def _active_card(self, tag_id: str | None) -> Card | None:
         if tag_id is None:

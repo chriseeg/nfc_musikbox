@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from enum import StrEnum
 import logging
 from typing import Any, Literal
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import STORAGE_KEY, STORAGE_VERSION
 
@@ -19,6 +22,27 @@ TITLE_MAX_LEN = 60
 
 # Positionen ändern sich bei jedem Herausziehen; gebündelt speichern schont den eMMC.
 POSITION_SAVE_DELAY = 5
+
+
+class StoreEvent(StrEnum):
+    """Art der Änderung, die an Listener gemeldet wird."""
+
+    CARD_ADDED = "card_added"
+    CARD_UPDATED = "card_updated"
+    CARD_REMOVED = "card_removed"
+    POSITION = "position"
+    SEEN = "seen"
+
+
+type StoreListener = Callable[[StoreEvent, str], None]
+
+
+@dataclass(slots=True)
+class SeenTag:
+    """Zuletzt gescannte Karte (auch ohne Zuordnung) für "Noch ohne Musik"."""
+
+    last: str
+    reader: str | None = None
 
 
 @dataclass(slots=True)
@@ -72,7 +96,9 @@ class CardStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.cards: dict[str, Card] = {}
         self.positions: dict[str, Position] = {}
+        self.seen: dict[str, SeenTag] = {}
         self._dirty = False
+        self._listeners: list[StoreListener] = []
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
@@ -90,6 +116,10 @@ class CardStore:
                 self.positions[tag_id] = Position.from_dict(raw)
             except TypeError, ValueError:
                 _LOGGER.warning("Ungültige Position für %s ignoriert: %s", tag_id, raw)
+        self.seen = {}
+        for tag_id, raw in data.get("seen", {}).items():
+            if isinstance(raw, dict) and isinstance(raw.get("last"), str):
+                self.seen[tag_id] = SeenTag(last=raw["last"], reader=raw.get("reader"))
         _LOGGER.debug(
             "Store geladen: %d Karten, %d Positionen", len(self.cards), len(self.positions)
         )
@@ -98,7 +128,23 @@ class CardStore:
         return {
             "cards": [asdict(card) for card in self.cards.values()],
             "positions": {tag: asdict(pos) for tag, pos in self.positions.items()},
+            "seen": {tag: asdict(seen) for tag, seen in self.seen.items()},
         }
+
+    @callback
+    def async_add_listener(self, listener: StoreListener) -> CALLBACK_TYPE:
+        self._listeners.append(listener)
+
+        @callback
+        def _remove() -> None:
+            self._listeners.remove(listener)
+
+        return _remove
+
+    @callback
+    def _notify(self, event: StoreEvent, tag_id: str) -> None:
+        for listener in list(self._listeners):
+            listener(event, tag_id)
 
     async def async_save(self) -> None:
         self._dirty = False
@@ -118,13 +164,25 @@ class CardStore:
         self._store.async_delay_save(self._delayed_data, POSITION_SAVE_DELAY)
 
     async def async_set_card(self, card: Card) -> None:
+        added = card.tag_id not in self.cards
         self.cards[card.tag_id] = card
         await self.async_save()
+        self._notify(StoreEvent.CARD_ADDED if added else StoreEvent.CARD_UPDATED, card.tag_id)
+
+    async def async_update_card(self, tag_id: str, **changes: Any) -> Card:
+        card = self.cards[tag_id]
+        for key, value in changes.items():
+            setattr(card, key, value)
+        await self.async_save()
+        self._notify(StoreEvent.CARD_UPDATED, tag_id)
+        return card
 
     async def async_remove_card(self, tag_id: str) -> None:
-        self.cards.pop(tag_id, None)
+        if self.cards.pop(tag_id, None) is None:
+            return
         self.positions.pop(tag_id, None)
         await self.async_save()
+        self._notify(StoreEvent.CARD_REMOVED, tag_id)
 
     def set_position(self, tag_id: str, position: Position | None) -> None:
         if position is None:
@@ -133,3 +191,14 @@ class CardStore:
         else:
             self.positions[tag_id] = position
         self._schedule_save()
+        self._notify(StoreEvent.POSITION, tag_id)
+
+    def mark_seen(self, tag_id: str, reader: str | None) -> None:
+        self.seen[tag_id] = SeenTag(last=dt_util.utcnow().isoformat(), reader=reader)
+        self._schedule_save()
+        self._notify(StoreEvent.SEEN, tag_id)
+
+    def forget_seen(self, tag_id: str) -> None:
+        if self.seen.pop(tag_id, None) is not None:
+            self._schedule_save()
+            self._notify(StoreEvent.SEEN, tag_id)

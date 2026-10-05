@@ -4,6 +4,20 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0]
+
+### Hinzugefügt
+- M4: Panel „Musikkarten“ (nur Admins, mobile first, Dark Mode): Noch ohne Musik,
+  Zugeordnete Karten, Karte bearbeiten mit Medien-Browser, Lesegeräte-Übersicht.
+- Websocket-API `nfc_musikbox/*` (subscribe, card/save, card/delete, card/play,
+  position/reset, seen/delete), Live-Updates, übersteht Reloads.
+- Pro Karte ein Gerät mit Schalter „Aktiv“, Auswahl „Betriebsart“, Sensor „Gemerkte Stelle“.
+- Dienst `play_card` (Test-Wiedergabe, optional mit Fortsetzen).
+- Gescannte Karten werden gemerkt (auch ohne Zuordnung) für „Noch ohne Musik“.
+
+### Geändert
+- Player-Backend (Sonos/allgemein) wird bei jeder Nutzung bestimmt statt einmalig beim Start.
+
 ## [0.3.0]
 
 ### Hinzugefügt

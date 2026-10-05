@@ -1,0 +1,62 @@
+blueprint:
+  name: NFC-Musikbox – Lesegerät (Tasten und LED)
+  description: Play/Pause-Taste, 30 s zurück (kurz) / von vorne (lang), LED-Status an den Reader.
+  domain: automation
+  input:
+    tag_sensor: {name: Sensor "Karte auf dem Reader", selector: {entity: {domain: [sensor]}}}
+    player: {name: Lautsprecher, selector: {entity: {domain: [media_player]}}}
+    play_event: {name: Ereignis "Taste Play/Pause", selector: {entity: {domain: [event]}}}
+    back_event: {name: Ereignis "Taste Zurück", selector: {entity: {domain: [event]}}}
+    led_action: {name: ESPHome-Aktion für den LED-Status, default: esphome.nfc_musikbox_set_playback_state, selector: {text: {}}}
+    skip_seconds: {name: Sprung zurück (Sekunden), default: 30, selector: {number: {min: 5, max: 120, step: 1, mode: box}}}
+mode: queued
+max: 5
+max_exceeded: silent
+variables:
+  tag_sensor: !input tag_sensor
+  player: !input player
+  skip: !input skip_seconds
+  card_on: "{{ states(tag_sensor) not in ['none', 'unavailable', 'unknown', ''] }}"
+  ev: "{{ trigger.to_state.attributes.event_type | default('', true) if trigger.platform == 'state' and trigger.to_state is not none else '' }}"
+triggers:
+  - {trigger: state, entity_id: !input play_event, id: play}
+  - {trigger: state, entity_id: !input back_event, id: back}
+  - {trigger: state, entity_id: !input player, to: null, id: led}
+  - {trigger: homeassistant, event: start, id: led}
+  - {trigger: event, event_type: esphome.nfc_reader_online, id: led}
+actions:
+  - choose:
+      - conditions:
+          - {condition: trigger, id: play}
+          - condition: template
+            value_template: "{{ card_on and ev == 'kurz' and trigger.from_state.state not in ['unavailable', 'unknown'] }}"
+        sequence:
+          - action: media_player.media_play_pause
+            target: {entity_id: !input player}
+      - conditions:
+          - {condition: trigger, id: back}
+          - condition: template
+            value_template: "{{ card_on and ev == 'kurz' and trigger.from_state.state not in ['unavailable', 'unknown'] and states(player) in ['playing', 'paused'] }}"
+        sequence:
+          - variables:
+              updated: "{{ as_datetime(state_attr(player, 'media_position_updated_at')) if state_attr(player, 'media_position_updated_at') else none }}"
+              elapsed: "{{ (now() - updated).total_seconds() if is_state(player, 'playing') and updated is not none else 0 }}"
+              target_pos: "{{ [0, ((state_attr(player, 'media_position') | float(0)) + elapsed - skip) | round(0) | int] | max }}"
+          - action: media_player.media_seek
+            target: {entity_id: !input player}
+            data: {seek_position: "{{ target_pos }}"}
+      - conditions:
+          - {condition: trigger, id: back}
+          - condition: template
+            value_template: "{{ card_on and ev == 'lang' and trigger.from_state.state not in ['unavailable', 'unknown'] }}"
+        sequence:
+          - action: sonos.play_queue
+            target: {entity_id: !input player}
+            data: {queue_position: 0}
+      - conditions:
+          - {condition: trigger, id: led}
+        sequence:
+          - action: !input led_action
+            data:
+              player_state: "{{ 'playing' if states(player) == 'buffering' else states(player) }}"
+            continue_on_error: true

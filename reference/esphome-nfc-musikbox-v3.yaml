@@ -1,0 +1,361 @@
+# NFC-Musikbox v3 – ESP32 (Wemos D1 Mini32) + PN532 (I2C) + 2 beleuchtete Taster
+# Tonie-Logik: Der Reader meldet nur, WELCHE Karte gerade liegt ("Karte auf dem Reader").
+# Alles Weitere (Abspielen, Pause beim Entfernen, Fortsetzen) macht Home Assistant.
+#
+# Taster:  GPIO25 = 30 s zurück (kurz) / von vorne (lang)   LED GPIO16
+#          GPIO26 = Wiedergabe/Pause                         LED GPIO17
+# Der Reader kennt keinen Lautsprecher. Er nimmt nur den Wiedergabestatus von
+# Home Assistant entgegen (API-Aktion set_playback_state) und zeigt ihn per LED.
+
+substitutions:
+  name: nfc-musikbox
+  friendly_name: NFC Musikbox
+  remove_delay: 2s     # so lange darf die Karte "wackeln", bevor sie als entfernt gilt
+  hold_time: 800ms     # so lange gedrückt halten = lang
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: -100
+    then:
+      - text_sensor.template.publish:
+          id: playback_state
+          state: "unbekannt"
+      - text_sensor.template.publish:
+          id: current_tag
+          state: "none"
+      - script.execute: update_play_led
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+logger:
+  # Für Tiefen-Debugging des PN532 (sehr gesprächig), Zeilen einkommentieren:
+  # level: VERY_VERBOSE
+  # logs:
+  #   pn532: VERY_VERBOSE
+
+debug:
+  update_interval: 60s
+
+api:
+  encryption:
+    key: !secret nfc_musikbox_api_key
+  on_client_connected:
+    - script.execute: update_play_led
+    # Home Assistant kann darauf reagieren und den aktuellen Status neu senden
+    - homeassistant.event:
+        event: esphome.nfc_reader_online
+        data:
+          reader: ${name}
+  actions:
+    # Wird von Home Assistant aufgerufen: "playing", "paused", "idle" ...
+    - action: set_playback_state
+      variables:
+        player_state: string
+      then:
+        - text_sensor.template.publish:
+            id: playback_state
+            state: !lambda 'return player_state;'
+        - script.execute: update_play_led
+
+ota:
+  - platform: esphome
+    password: !secret nfc_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "NFC-Musikbox Fallback"
+
+captive_portal:
+
+time:
+  - platform: homeassistant
+    id: ha_time
+
+globals:
+  - id: scan_count
+    type: int
+    initial_value: '0'
+
+# ---------- NFC ----------
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  scan: true
+
+pn532_i2c:
+  id: pn532_reader
+  update_interval: 1s
+  on_tag:
+    then:
+      # Karte (wieder) erkannt: ein ausstehendes "entfernt" abbrechen
+      - script.stop: tag_gone
+      # Nur ein echtes Einlegen oder ein Kartenwechsel wird gemeldet,
+      # kurzes Wackeln derselben Karte nicht.
+      - if:
+          condition:
+            lambda: 'return id(current_tag).state != x;'
+          then:
+            - text_sensor.template.publish:
+                id: current_tag
+                state: !lambda 'return x;'
+            - homeassistant.tag_scanned: !lambda 'return x;'
+            - script.execute: tag_feedback
+            - lambda: 'id(scan_count)++;'
+            - sensor.template.publish:
+                id: scan_count_sensor
+                state: !lambda 'return id(scan_count);'
+            - text_sensor.template.publish:
+                id: last_tag_id
+                state: !lambda 'return x;'
+            - text_sensor.template.publish:
+                id: last_tag_time
+                state: !lambda |-
+                  auto t = id(ha_time).now();
+                  if (!t.is_valid()) return std::string("keine Uhrzeit");
+                  return t.strftime("%d.%m. %H:%M:%S");
+            - binary_sensor.template.publish:
+                id: tag_present
+                state: true
+  on_tag_removed:
+    then:
+      - script.execute: tag_gone
+
+# ---------- Sensoren ----------
+sensor:
+  - platform: template
+    id: scan_count_sensor
+    name: "Gescannte Karten (seit Neustart)"
+    accuracy_decimals: 0
+    state_class: total_increasing
+    entity_category: diagnostic
+  - platform: wifi_signal
+    name: "WLAN-Signal"
+    update_interval: 60s
+  - platform: uptime
+    name: "Laufzeit"
+  - platform: debug
+    free:
+      name: "Freier Heap"
+    loop_time:
+      name: "Loop-Zeit"
+
+text_sensor:
+  # Die Karte, die gerade auf dem Reader liegt – "none", wenn keine liegt.
+  # Das ist der zentrale Zustand für Home Assistant (Einlegen/Entfernen/Wechsel).
+  - platform: template
+    id: current_tag
+    name: "Karte auf dem Reader"
+  # Vom Home Assistant gesetzt, steuert die Play/Pause-LED
+  - platform: template
+    id: playback_state
+    name: "Wiedergabestatus (von HA)"
+    entity_category: diagnostic
+  - platform: template
+    id: last_tag_id
+    name: "Letzte Tag-ID"
+    entity_category: diagnostic
+  - platform: template
+    id: last_tag_time
+    name: "Letzter Scan"
+    entity_category: diagnostic
+  - platform: wifi_info
+    ip_address:
+      name: "IP-Adresse"
+    ssid:
+      name: "WLAN"
+  - platform: debug
+    reset_reason:
+      name: "Reset-Grund"
+
+# ---------- Tasten-Ereignisse für Home Assistant ----------
+event:
+  - platform: template
+    id: ev_back
+    name: "Ereignis Taste Zurück"
+    event_types: ["kurz", "lang"]
+  - platform: template
+    id: ev_play
+    name: "Ereignis Taste Play/Pause"
+    event_types: ["kurz"]
+
+# ---------- Debug-Buttons ----------
+button:
+  - platform: restart
+    name: "Neustart"
+  - platform: template
+    name: "LED-Test"
+    on_press:
+      - script.execute: tag_feedback
+
+# ---------- LEDs (PWM) ----------
+output:
+  - platform: ledc
+    pin: GPIO16
+    id: out_led_back
+  - platform: ledc
+    pin: GPIO17
+    id: out_led_play
+
+light:
+  - platform: monochromatic
+    output: out_led_back
+    id: led_back
+    name: "LED Zurück"
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 100ms
+  - platform: monochromatic
+    output: out_led_play
+    id: led_play
+    name: "LED Play/Pause"
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 200ms
+    effects:
+      - pulse:
+          name: Pulse
+          transition_length: 1s
+          update_interval: 1s
+          min_brightness: 5%
+          max_brightness: 70%
+
+# ---------- Taster (gegen GND, interner Pull-up) ----------
+binary_sensor:
+  - platform: template
+    id: tag_present
+    name: "Karte liegt auf"
+
+  # 30 s zurück (kurz) / von vorne (lang gedrückt). Die Aktion selbst führt Home Assistant aus.
+  - platform: gpio
+    id: btn_back
+    name: "Taste Zurück"
+    pin:
+      number: GPIO25
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+      - delayed_off: 20ms
+    on_press:
+      - script.execute: back_hold
+    on_release:
+      - if:
+          condition:
+            script.is_running: back_hold
+          then:
+            - script.stop: back_hold
+            - event.trigger:
+                id: ev_back
+                event_type: kurz
+            - script.execute: flash_back
+
+  # Wiedergabe/Pause. Die LED folgt dem Wiedergabestatus aus Home Assistant.
+  - platform: gpio
+    id: btn_play
+    name: "Taste Play/Pause"
+    pin:
+      number: GPIO26
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+      - delayed_off: 20ms
+    on_press:
+      - event.trigger:
+          id: ev_play
+          event_type: kurz
+
+# ---------- Logik ----------
+script:
+  # Karte entfernt, aber erst nach der Entprellzeit
+  - id: tag_gone
+    mode: restart
+    then:
+      - delay: ${remove_delay}
+      - text_sensor.template.publish:
+          id: current_tag
+          state: "none"
+      - binary_sensor.template.publish:
+          id: tag_present
+          state: false
+      - script.execute: update_play_led
+
+  # Lang gedrückt: nach hold_time Ereignis "lang" senden
+  - id: back_hold
+    mode: restart
+    then:
+      - delay: ${hold_time}
+      - event.trigger:
+          id: ev_back
+          event_type: lang
+      - script.execute: flash_back_long
+
+  # Ohne Karte alles aus. Mit Karte: Zurück-LED schwach an,
+  # Play-LED: playing = an, paused = pulsieren, sonst schwach.
+  - id: update_play_led
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(current_tag).state == "none" || id(current_tag).state.empty();'
+          then:
+            - light.turn_off: led_play
+            - light.turn_off: led_back
+          else:
+            - light.turn_on: { id: led_back, brightness: 12% }
+            - if:
+                condition:
+                  text_sensor.state:
+                    id: playback_state
+                    state: "playing"
+                then:
+                  - light.turn_on: { id: led_play, brightness: 70%, effect: "None" }
+                else:
+                  - if:
+                      condition:
+                        text_sensor.state:
+                          id: playback_state
+                          state: "paused"
+                      then:
+                        - light.turn_on: { id: led_play, effect: "Pulse" }
+                      else:
+                        - light.turn_on: { id: led_play, brightness: 20%, effect: "None" }
+
+  - id: flash_back
+    mode: restart
+    then:
+      - light.turn_on: { id: led_back, brightness: 100% }
+      - delay: 250ms
+      - script.execute: update_play_led
+
+  - id: flash_back_long
+    mode: restart
+    then:
+      - repeat:
+          count: 2
+          then:
+            - light.turn_on: { id: led_back, brightness: 100%, transition_length: 0s }
+            - delay: 120ms
+            - light.turn_off: { id: led_back, transition_length: 0s }
+            - delay: 120ms
+      - script.execute: update_play_led
+
+  # Quittung beim Einlegen einer Karte (ersetzt adonnos Buzzer)
+  - id: tag_feedback
+    mode: restart
+    then:
+      - repeat:
+          count: 2
+          then:
+            - light.turn_on: { id: led_back, brightness: 100%, transition_length: 0s }
+            - light.turn_on: { id: led_play, brightness: 100%, effect: "None", transition_length: 0s }
+            - delay: 120ms
+            - light.turn_off: { id: led_back, transition_length: 0s }
+            - light.turn_off: { id: led_play, transition_length: 0s }
+            - delay: 120ms
+      - script.execute: update_play_led

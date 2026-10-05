@@ -1,0 +1,74 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "NFC-Musikbox",
+        "description": "Richtet die NFC-Musikbox ein. Lesegeräte fügst du danach über „Lesegerät hinzufügen“ hinzu."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Die NFC-Musikbox ist bereits eingerichtet."
+    }
+  },
+  "config_subentries": {
+    "reader": {
+      "entry_type": "Lesegerät",
+      "initiate_flow": {
+        "user": "Lesegerät hinzufügen"
+      },
+      "step": {
+        "user": {
+          "title": "Lesegerät hinzufügen",
+          "description": "Wähle das ESPHome-Lesegerät und den Lautsprecher, der zu ihm gehört.",
+          "data": {
+            "device_id": "Lesegerät (ESPHome)",
+            "media_player": "Lautsprecher"
+          }
+        },
+        "reconfigure": {
+          "title": "Lesegerät {reader}",
+          "data": {
+            "media_player": "Lautsprecher"
+          }
+        }
+      },
+      "error": {
+        "already_configured": "Dieses Lesegerät ist bereits eingerichtet.",
+        "no_card_sensor": "Am Gerät fehlt der Sensor „Karte auf dem Reader“. Läuft die Firmware v3?"
+      },
+      "abort": {
+        "reconfigure_successful": "Gespeichert."
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Zeiten und Toleranzen",
+        "description": "Feintuning für Kartenwechsel, Fortsetzen (Sonos) und die Zurück-Taste.",
+        "data": {
+          "card_change_delay": "Pause beim Kartenwechsel",
+          "removal_rewind": "Rücksprung beim Entfernen",
+          "skip_back": "Zurück-Taste (kurz) springt um",
+          "restore_settle": "Wartezeit nach Start des Mediums",
+          "restore_start_timeout": "Timeout bis Wiedergabe startet",
+          "queue_jump_timeout": "Timeout für Titelsprung",
+          "seek_tolerance": "Toleranz beim Spulen",
+          "seek_attempts": "Spulversuche",
+          "seek_retry_delay": "Pause zwischen Spulversuchen"
+        },
+        "data_description": {
+          "removal_rewind": "Das Lesegerät meldet „entfernt“ erst nach 2 s Entprellung. Um diesen Wert wird die gemerkte Stelle zurückgesetzt.",
+          "card_change_delay": "Wartezeit zwischen Speichern der alten und Starten der neuen Karte."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_card": {
+        "name": "Aktuelle Karte"
+      }
+    }
+  }
+}

@@ -4,8 +4,8 @@ Karte auflegen = Musik, Karte abziehen = Pause. Die Integration verbindet einen
 ESPHome-NFC-Leser (PN532, zwei Tasten) mit einem Lautsprecher und merkt sich pro
 Karte, wo die Wiedergabe stand – wie bei einer Tonie-Box.
 
-> **Status:** in Entwicklung (Meilenstein 1: Gerüst und Einrichtung). Wiedergabe-Logik,
-> Tasten, LED und die Oberfläche folgen.
+> **Status:** in Entwicklung. Fertig: Einrichtung, Wiedergabe-Logik (Tonie/Einfach) und
+> Dienste zum Zuordnen. Es folgen Tasten und LED (M3) und die Oberfläche (M4).
 
 ## Voraussetzungen
 
@@ -24,6 +24,47 @@ Karte, wo die Wiedergabe stand – wie bei einer Tonie-Box.
 
 Pro Lesegerät entsteht ein Gerät mit dem Diagnose-Sensor **„Aktuelle Karte“**. Seine
 Attribute zeigen, welche Entitäten gefunden wurden (Karten-Sensor, Tasten, LED-Aktion).
+
+## Verhalten
+
+**Tonie** (Standard)
+
+| Aktion | Ergebnis |
+|---|---|
+| Karte auflegen | Medium startet und setzt an der gemerkten Stelle fort |
+| Karte abziehen | Stelle wird gemerkt, Wiedergabe pausiert |
+| Karte A gegen B tauschen | A merkt sich die Stelle (ohne Pause), kurz danach startet B |
+| Karte wieder auflegen, Player noch pausiert auf gleichem Titel | einfach weiter |
+
+Gemerkt werden Titelnummer in der Queue, Sekunde und Titelname. Fortsetzen an der Stelle
+klappt nur mit Sonos (Titelsprung per `sonos.play_queue`, dann Spulen). Andere Player
+starten das Medium von vorne.
+
+**Einfach**: Auflegen startet das Medium von vorne, Abziehen tut nichts.
+
+Karten ohne Zuordnung, deaktivierte Karten und Karten, die für ein anderes Lesegerät
+freigegeben sind, werden ignoriert. Zustandswechsel von/nach `unavailable`/`unknown`
+(Reconnect, HA-Start) lösen nichts aus.
+
+## Karten zuordnen (bis die Oberfläche fertig ist)
+
+*Entwicklerwerkzeuge → Aktionen → „NFC-Musikbox: Karte zuordnen“* (`nfc_musikbox.assign_card`):
+Tag-ID (steht im Sensor „Aktuelle Karte“, wenn die Karte aufliegt), Medium über den
+Medien-Browser, Betriebsart, optional Lesegeräte.
+
+```yaml
+action: nfc_musikbox.assign_card
+data:
+  tag_id: CA-09-0C-05
+  name: Hörspiel Puderzucker
+  media:
+    entity_id: media_player.sonos_kinderzimmer
+    media_content_id: FV:2/46
+    media_content_type: favorite_item_id
+  mode: tonie
+```
+
+Außerdem: `nfc_musikbox.remove_card`, `nfc_musikbox.reset_position`.
 
 ## Optionen
 

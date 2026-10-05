@@ -8,7 +8,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from custom_components.nfc_musikbox.const import DOMAIN
 from custom_components.nfc_musikbox.diagnostics import async_get_config_entry_diagnostics
-from custom_components.nfc_musikbox.store import Card
+from custom_components.nfc_musikbox.store import Card, Position
 
 from .conftest import BACK_EVENT, CARD_SENSOR, PLAY_EVENT, PLAYER, make_entry, make_reader
 
@@ -91,3 +91,14 @@ async def test_diagnostics(hass: HomeAssistant) -> None:
     (reader_diag,) = diag["readers"].values()
     assert reader_diag["card_sensor"] == CARD_SENSOR
     assert diag["cards"] == []
+
+
+async def test_reload_keeps_pending_position(hass: HomeAssistant) -> None:
+    """Optionsänderung lädt neu; eine gerade gemerkte Stelle darf nicht verloren gehen."""
+    entry = make_entry(make_reader(hass))
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    entry.runtime_data.store.set_position("A", Position(q=2, p=99, t="x"))
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    assert entry.runtime_data.store.positions["A"] == Position(q=2, p=99, t="x")

@@ -9,15 +9,20 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers.typing import ConfigType
 
 from .const import DEFAULT_OPTIONS, DOMAIN, SUBENTRY_READER
 from .reader import ReaderConfig, resolve_reader
+from .scanner import ReaderController
+from .services import async_setup_services
 from .store import CardStore
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 @dataclass(slots=True)
@@ -27,6 +32,7 @@ class NfcMusikboxData:
     store: CardStore
     options: dict[str, Any]
     readers: dict[str, ReaderConfig] = field(default_factory=dict)
+    controllers: dict[str, ReaderController] = field(default_factory=dict)
 
 
 type NfcMusikboxConfigEntry = ConfigEntry[NfcMusikboxData]
@@ -48,6 +54,12 @@ def _register_reader_device(
     )
 
 
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Dienste registrieren (unabhängig vom Config Entry)."""
+    async_setup_services(hass)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) -> bool:
     """Config Entry einrichten."""
     store = CardStore(hass)
@@ -63,6 +75,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) 
     entry.runtime_data = data
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    for reader in data.readers.values():
+        controller = ReaderController(hass, reader, store, data.options)
+        controller.async_start()
+        data.controllers[reader.subentry_id] = controller
     # Neue/geänderte Lesegeräte (Subentries) und Optionen erfordern einen Reload
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     _LOGGER.debug("Eingerichtet mit %d Lesegerät(en)", len(data.readers))
@@ -75,4 +92,7 @@ async def _async_reload(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) -> N
 
 async def async_unload_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) -> bool:
     """Config Entry entladen."""
+    for controller in entry.runtime_data.controllers.values():
+        await controller.async_stop()
+    await entry.runtime_data.store.async_flush()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

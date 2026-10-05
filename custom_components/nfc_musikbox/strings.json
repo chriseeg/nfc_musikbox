@@ -70,5 +70,76 @@
         "name": "Current card"
       }
     }
+  },
+  "services": {
+    "assign_card": {
+      "name": "Assign card",
+      "description": "Assigns media to an NFC card or changes the assignment.",
+      "fields": {
+        "tag_id": {
+          "name": "Tag ID",
+          "description": "Card ID, e.g. CA-09-0C-05 (see sensor “Current card”)."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Display name; empty = media title."
+        },
+        "media": {
+          "name": "Media",
+          "description": "Album, playlist, favorite or radio station."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Tonie: plays only while the card is on the reader, position is remembered. Simple: card only starts playback."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Disabled cards do nothing."
+        },
+        "readers": {
+          "name": "Readers",
+          "description": "Only on these readers; empty = all."
+        }
+      }
+    },
+    "remove_card": {
+      "name": "Remove assignment",
+      "description": "Removes media and remembered position of a card.",
+      "fields": {
+        "tag_id": {
+          "name": "Tag ID",
+          "description": "Card ID."
+        }
+      }
+    },
+    "reset_position": {
+      "name": "Reset remembered position",
+      "description": "The media starts from the beginning next time.",
+      "fields": {
+        "tag_id": {
+          "name": "Tag ID",
+          "description": "Card ID."
+        }
+      }
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "tonie": "Tonie",
+        "simple": "Simple"
+      }
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "The NFC music box is not set up."
+    },
+    "unknown_card": {
+      "message": "No assignment for card {tag_id}."
+    },
+    "unknown_reader": {
+      "message": "Device {device} is not an NFC music box reader."
+    }
   }
 }

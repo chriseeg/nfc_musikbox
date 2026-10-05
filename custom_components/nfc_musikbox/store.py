@@ -72,6 +72,7 @@ class CardStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.cards: dict[str, Card] = {}
         self.positions: dict[str, Position] = {}
+        self._dirty = False
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
@@ -100,10 +101,21 @@ class CardStore:
         }
 
     async def async_save(self) -> None:
+        self._dirty = False
         await self._store.async_save(self._data())
 
+    async def async_flush(self) -> None:
+        """Verzögert gespeicherte Positionen sofort schreiben (z. B. vor einem Reload)."""
+        if self._dirty:
+            await self.async_save()
+
+    def _delayed_data(self) -> dict[str, Any]:
+        self._dirty = False
+        return self._data()
+
     def _schedule_save(self) -> None:
-        self._store.async_delay_save(self._data, POSITION_SAVE_DELAY)
+        self._dirty = True
+        self._store.async_delay_save(self._delayed_data, POSITION_SAVE_DELAY)
 
     async def async_set_card(self, card: Card) -> None:
         self.cards[card.tag_id] = card

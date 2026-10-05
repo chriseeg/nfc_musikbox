@@ -1,0 +1,47 @@
+assign_card:
+  fields:
+    tag_id:
+      required: true
+      example: "CA-09-0C-05"
+      selector:
+        text:
+    name:
+      selector:
+        text:
+    media:
+      required: true
+      selector:
+        media:
+    mode:
+      default: tonie
+      selector:
+        select:
+          translation_key: mode
+          options:
+            - tonie
+            - simple
+    enabled:
+      default: true
+      selector:
+        boolean:
+    readers:
+      selector:
+        device:
+          integration: nfc_musikbox
+          multiple: true
+
+remove_card:
+  fields:
+    tag_id:
+      required: true
+      example: "CA-09-0C-05"
+      selector:
+        text:
+
+reset_position:
+  fields:
+    tag_id:
+      required: true
+      example: "CA-09-0C-05"
+      selector:
+        text:

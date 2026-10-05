@@ -1,0 +1,74 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "NFC-Musikbox",
+        "description": "Sets up the NFC music box. Add readers afterwards via “Add reader”."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "The NFC music box is already set up."
+    }
+  },
+  "config_subentries": {
+    "reader": {
+      "entry_type": "Reader",
+      "initiate_flow": {
+        "user": "Add reader"
+      },
+      "step": {
+        "user": {
+          "title": "Add reader",
+          "description": "Select the ESPHome reader and the speaker that belongs to it.",
+          "data": {
+            "device_id": "Reader (ESPHome)",
+            "media_player": "Speaker"
+          }
+        },
+        "reconfigure": {
+          "title": "Reader {reader}",
+          "data": {
+            "media_player": "Speaker"
+          }
+        }
+      },
+      "error": {
+        "already_configured": "This reader is already set up.",
+        "no_card_sensor": "The device has no “Karte auf dem Reader” sensor. Is firmware v3 installed?"
+      },
+      "abort": {
+        "reconfigure_successful": "Saved."
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Timing and tolerances",
+        "description": "Fine tuning for card change, resume (Sonos) and the back button.",
+        "data": {
+          "card_change_delay": "Pause on card change",
+          "removal_rewind": "Rewind on removal",
+          "skip_back": "Back button (short) skips",
+          "restore_settle": "Delay after starting the media",
+          "restore_start_timeout": "Timeout until playback starts",
+          "queue_jump_timeout": "Timeout for track jump",
+          "seek_tolerance": "Seek tolerance",
+          "seek_attempts": "Seek attempts",
+          "seek_retry_delay": "Delay between seek attempts"
+        },
+        "data_description": {
+          "removal_rewind": "The reader reports “removed” only after a 2 s debounce. The stored position is rewound by this value.",
+          "card_change_delay": "Delay between saving the old card and starting the new one."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_card": {
+        "name": "Current card"
+      }
+    }
+  }
+}

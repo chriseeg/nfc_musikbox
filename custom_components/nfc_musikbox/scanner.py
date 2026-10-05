@@ -3,19 +3,30 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 import logging
 from typing import Any
 
 from homeassistant.const import STATE_PAUSED, STATE_PLAYING, STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.util import dt as dt_util
 
-from .const import NO_CARD, OPT_CARD_CHANGE_DELAY, OPT_REMOVAL_REWIND
+from .const import (
+    BUTTON_EVENT_MAX_AGE,
+    EVENT_TYPE_LONG,
+    EVENT_TYPE_SHORT,
+    NO_CARD,
+    OPT_CARD_CHANGE_DELAY,
+    OPT_REMOVAL_REWIND,
+    OPT_SKIP_BACK,
+)
 from .players import (
     MIN_RESTORE_SECONDS,
     PlayerBackend,
     create_backend,
+    current_position,
     fmt_position,
     media_title,
     queue_position,
@@ -66,6 +77,12 @@ class ReaderController:
                 self.hass, self.reader.card_sensor, self._handle_card_sensor
             )
         )
+        for entity_id, handler in (
+            (self.reader.play_event, self._handle_play_button),
+            (self.reader.back_event, self._handle_back_button),
+        ):
+            if entity_id is not None:
+                self._unsub.append(async_track_state_change_event(self.hass, entity_id, handler))
         _LOGGER.debug(
             "%s: höre auf %s, Player %s (%s)",
             self.name,
@@ -79,6 +96,11 @@ class ReaderController:
             unsub()
         self._unsub.clear()
         await self._cancel_running()
+
+    @property
+    def card_on_reader(self) -> bool:
+        state = self.hass.states.get(self.reader.card_sensor or "")
+        return state is not None and state.state not in IGNORED_STATES | {NO_CARD}
 
     async def _cancel_running(self) -> None:
         task = self._task
@@ -217,3 +239,76 @@ class ReaderController:
                 await self.player.async_restore(memory)
         finally:
             self._restoring = None
+
+    # ---------- Tasten ----------
+
+    @staticmethod
+    def _button_event_type(event: Event[EventStateChangedData]) -> str | None:
+        """event_type eines frischen Tastendrucks, sonst None.
+
+        Der Zustand einer Event-Entität ist der Zeitstempel des letzten Ereignisses.
+        Geprüft wird dessen Alter statt des Vorzustands: So zählt auch der erste
+        Druck nach dem Start (Vorzustand "unknown"), ein beim Reconnect
+        wiederhergestellter alter Zeitstempel aber nicht.
+        """
+        new_state: State | None = event.data["new_state"]
+        old_state: State | None = event.data["old_state"]
+        if new_state is None or new_state.state in IGNORED_STATES:
+            return None
+        if old_state is not None and old_state.state == new_state.state:
+            return None
+        fired = dt_util.parse_datetime(new_state.state)
+        if fired is None:
+            return None
+        if abs((dt_util.utcnow() - fired).total_seconds()) > BUTTON_EVENT_MAX_AGE:
+            return None
+        event_type = new_state.attributes.get("event_type")
+        return event_type if isinstance(event_type, str) else None
+
+    @callback
+    def _handle_play_button(self, event: Event[EventStateChangedData]) -> None:
+        if self._button_event_type(event) != EVENT_TYPE_SHORT:
+            return
+        self._run_button("Play/Pause", self._on_play_button())
+
+    @callback
+    def _handle_back_button(self, event: Event[EventStateChangedData]) -> None:
+        event_type = self._button_event_type(event)
+        if event_type == EVENT_TYPE_SHORT:
+            self._run_button("Zurück kurz", self._on_back_short())
+        elif event_type == EVENT_TYPE_LONG:
+            self._run_button("Zurück lang", self._on_back_long())
+
+    @callback
+    def _run_button(self, label: str, action: Coroutine[Any, Any, None]) -> None:
+        if not self.card_on_reader:
+            _LOGGER.debug("%s: Taste %s ohne Karte ignoriert", self.name, label)
+            action.close()
+            return
+        _LOGGER.debug("%s: Taste %s", self.name, label)
+        self.hass.async_create_background_task(
+            self._button_task(label, action), f"nfc_musikbox {self.name} Taste"
+        )
+
+    async def _button_task(self, label: str, action: Coroutine[Any, Any, None]) -> None:
+        # Ein laufendes Fortsetzen würde die Taste gleich wieder überspielen
+        if self._restoring is not None:
+            _LOGGER.info("%s: Taste %s bricht das Fortsetzen ab", self.name, label)
+            await self._cancel_running()
+        try:
+            await action
+        except HomeAssistantError as err:
+            _LOGGER.error("%s: Taste %s fehlgeschlagen: %s", self.name, label, err)
+
+    async def _on_play_button(self) -> None:
+        await self.player.async_play_pause()
+
+    async def _on_back_short(self) -> None:
+        state = self.player.state
+        if state is None or state.state not in (STATE_PLAYING, STATE_PAUSED):
+            return
+        target = max(0, round(current_position(state) - float(self.options[OPT_SKIP_BACK])))
+        await self.player.async_seek(target)
+
+    async def _on_back_long(self) -> None:
+        await self.player.async_restart()

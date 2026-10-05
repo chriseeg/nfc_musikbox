@@ -22,6 +22,7 @@ from homeassistant.const import (
     ATTR_ENTITY_ID,
     SERVICE_MEDIA_PAUSE,
     SERVICE_MEDIA_PLAY,
+    SERVICE_MEDIA_PLAY_PAUSE,
     SERVICE_MEDIA_SEEK,
     STATE_PAUSED,
     STATE_PLAYING,
@@ -170,6 +171,13 @@ class PlayerBackend:
     async def async_pause(self) -> None:
         await self._call(MP_DOMAIN, SERVICE_MEDIA_PAUSE)
 
+    async def async_play_pause(self) -> None:
+        await self._call(MP_DOMAIN, SERVICE_MEDIA_PLAY_PAUSE)
+
+    async def async_restart(self) -> None:
+        """Medium von vorne (lange Zurück-Taste)."""
+        await self.async_seek(0)
+
     async def async_seek(self, position: float) -> None:
         await self._call(MP_DOMAIN, SERVICE_MEDIA_SEEK, **{ATTR_MEDIA_SEEK_POSITION: position})
 
@@ -188,6 +196,10 @@ class SonosBackend(PlayerBackend):
 
     async def async_play_queue(self, index: int) -> None:
         await self._call(SONOS_DOMAIN, SONOS_SERVICE_PLAY_QUEUE, queue_position=index)
+
+    async def async_restart(self) -> None:
+        """Anfang der Queue, nicht nur des aktuellen Titels."""
+        await self.async_play_queue(0)
 
     async def async_restore(self, position: Position) -> bool:
         opts = self.options

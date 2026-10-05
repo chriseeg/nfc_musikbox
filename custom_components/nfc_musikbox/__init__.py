@@ -13,6 +13,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DEFAULT_OPTIONS, DOMAIN, SUBENTRY_READER
+from .led import LedSync
 from .reader import ReaderConfig, resolve_reader
 from .scanner import ReaderController
 from .services import async_setup_services
@@ -33,6 +34,7 @@ class NfcMusikboxData:
     options: dict[str, Any]
     readers: dict[str, ReaderConfig] = field(default_factory=dict)
     controllers: dict[str, ReaderController] = field(default_factory=dict)
+    leds: dict[str, LedSync] = field(default_factory=dict)
 
 
 type NfcMusikboxConfigEntry = ConfigEntry[NfcMusikboxData]
@@ -80,6 +82,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) 
         controller = ReaderController(hass, reader, store, data.options)
         controller.async_start()
         data.controllers[reader.subentry_id] = controller
+        led = LedSync(hass, reader)
+        led.async_start()
+        data.leds[reader.subentry_id] = led
     # Neue/geänderte Lesegeräte (Subentries) und Optionen erfordern einen Reload
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     _LOGGER.debug("Eingerichtet mit %d Lesegerät(en)", len(data.readers))
@@ -92,6 +97,8 @@ async def _async_reload(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) -> N
 
 async def async_unload_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) -> bool:
     """Config Entry entladen."""
+    for led in entry.runtime_data.leds.values():
+        led.async_stop()
     for controller in entry.runtime_data.controllers.values():
         await controller.async_stop()
     await entry.runtime_data.store.async_flush()

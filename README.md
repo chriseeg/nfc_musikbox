@@ -4,8 +4,8 @@ Karte auflegen = Musik, Karte abziehen = Pause. Die Integration verbindet einen
 ESPHome-NFC-Leser (PN532, zwei Tasten) mit einem Lautsprecher und merkt sich pro
 Karte, wo die Wiedergabe stand – wie bei einer Tonie-Box.
 
-> **Status:** in Entwicklung. Fertig: Einrichtung, Wiedergabe-Logik (Tonie/Einfach) und
-> Dienste zum Zuordnen. Es folgen Tasten und LED (M3) und die Oberfläche (M4).
+> **Status:** in Entwicklung. Fertig: Einrichtung, Wiedergabe-Logik (Tonie/Einfach),
+> Tasten, LED und Dienste zum Zuordnen. Es folgt die Oberfläche (M4).
 
 ## Voraussetzungen
 
@@ -45,6 +45,22 @@ starten das Medium von vorne.
 Karten ohne Zuordnung, deaktivierte Karten und Karten, die für ein anderes Lesegerät
 freigegeben sind, werden ignoriert. Zustandswechsel von/nach `unavailable`/`unknown`
 (Reconnect, HA-Start) lösen nichts aus.
+
+## Tasten und LED
+
+Tasten wirken nur, solange eine Karte aufliegt.
+
+| Taste | Wirkung |
+|---|---|
+| Play/Pause | Wiedergabe/Pause |
+| Zurück kurz | 30 s zurück (einstellbar) |
+| Zurück lang (≥ 0,8 s) | von vorne: Sonos an den Anfang der Queue, andere Player an den Anfang des Titels |
+
+Ein Tastendruck während des Fortsetzens bricht das Fortsetzen ab.
+
+Die LED zeigt den Zustand des Lautsprechers (Play-LED an = spielt, pulsiert = Pause).
+Home Assistant sendet ihn bei jeder Zustandsänderung, beim Start und wenn sich das
+Lesegerät neu verbindet (`esphome.nfc_reader_online`).
 
 ## Karten zuordnen (bis die Oberfläche fertig ist)
 

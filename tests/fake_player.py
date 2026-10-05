@@ -73,6 +73,13 @@ class FakeSonos:
             self.pos, self.state = self._now_pos(), "paused"
             self.updated_at = dt_util.utcnow()
             self.publish()
+        elif name == "media_player.media_play_pause":
+            if self.state == "playing":
+                self.pos, self.state = self._now_pos(), "paused"
+            else:
+                self.state = "playing"
+            self.updated_at = dt_util.utcnow()
+            self.publish()
         elif name == "media_player.media_play":
             self.state, self.updated_at = "playing", dt_util.utcnow()
             self.publish()
@@ -95,7 +102,13 @@ class FakeSonos:
             f"fake-{self.entity_id}",
             suggested_object_id=self.entity_id.split(".", 1)[1],
         )
-        for service in ("play_media", "media_pause", "media_play", "media_seek"):
+        for service in (
+            "play_media",
+            "media_pause",
+            "media_play",
+            "media_play_pause",
+            "media_seek",
+        ):
             self.hass.services.async_register("media_player", service, self._handle)
         self.hass.services.async_register("sonos", "play_queue", self._handle)
         self.publish()

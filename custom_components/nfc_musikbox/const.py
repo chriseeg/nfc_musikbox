@@ -23,6 +23,11 @@ PLAY_EVENT_NAME: Final = "Ereignis Taste Play/Pause"
 BACK_EVENT_SUFFIX: Final = "ereignis_taste_zuruck"
 BACK_EVENT_NAME: Final = "Ereignis Taste Zurück"
 
+EVENT_TYPE_SHORT: Final = "kurz"
+EVENT_TYPE_LONG: Final = "lang"
+# Ältere Tasten-Events (z. B. wiederhergestellter Zustand nach Reconnect) ignorieren
+BUTTON_EVENT_MAX_AGE: Final = 5.0
+
 LED_ACTION_SUFFIX: Final = "set_playback_state"
 EVENT_READER_ONLINE: Final = "esphome.nfc_reader_online"
 

@@ -1,0 +1,106 @@
+blueprint:
+  name: NFC-Musikbox – Karte startet Sonos-Wiedergabe
+  description: 'Startet beim Auflegen einer NFC-Karte den zugeordneten Sonos-Favoriten.
+    Pro Reader legst du eine Automation aus diesem Blueprint an. Neue Karten trägst
+    du unter "Karten" als Zeile ein: "TAG-ID": "Name des Favoriten". Eine unbekannte
+    Karte erzeugt eine Benachrichtigung mit der fertigen Zeile. Nach einem gestarteten
+    Titel ist der Reader für die Sperrzeit blockiert, damit nicht sofort die nächste
+    Karte aufgelegt werden kann.'
+  domain: automation
+  author: Christian Seeger
+  homeassistant:
+    min_version: 2024.10.0
+  input:
+    setup:
+      name: Reader, Lautsprecher und Karten
+      icon: mdi:nfc-variant
+      input:
+        reader:
+          name: NFC-Reader
+          description: ESPHome-Gerät, das die Karten liest.
+          selector:
+            device:
+              integration: esphome
+              multiple: false
+        player:
+          name: Lautsprecher
+          description: Sonos-Player, auf dem die Favoriten gestartet werden.
+          selector:
+            target:
+              entity:
+              - domain:
+                - media_player
+                integration: sonos
+        cards:
+          name: Karten
+          description: 'Zuordnung Karte zu Sonos-Favorit, eine Zeile pro Karte, zum
+            Beispiel "CA-09-0C-05": "Mogli". Die Tag-ID muss genau so stehen, wie
+            sie vom Reader gemeldet wird, der Favoritenname genau so, wie ihn der
+            Sonos zeigt.'
+          default: {}
+          selector:
+            object:
+              multiple: false
+    settings:
+      name: Einstellungen
+      icon: mdi:cog
+      collapsed: true
+      input:
+        cooldown:
+          name: Sperrzeit
+          description: Sekunden, in denen nach einem gestarteten Titel keine weitere
+            Karte angenommen wird.
+          default: 10
+          selector:
+            number:
+              min: 0.0
+              max: 120.0
+              unit_of_measurement: s
+              mode: box
+              step: 1.0
+        notify_unknown:
+          name: Benachrichtigung bei unbekannter Karte
+          description: Zeigt in Home Assistant eine Benachrichtigung mit der fertigen
+            Zeile für die Karten-Zuordnung.
+          default: true
+          selector:
+            boolean: {}
+mode: single
+max_exceeded: silent
+variables:
+  cards_map: !input cards
+  tag_id: '{{ trigger.event.data.tag_id }}'
+  favorite: '{{ cards_map.get(trigger.event.data.tag_id) }}'
+triggers:
+- trigger: event
+  event_type: tag_scanned
+  event_data:
+    device_id: !input reader
+actions:
+- choose:
+  - conditions:
+    - '{{ favorite is not none }}'
+    sequence:
+    - action: media_player.select_source
+      target: !input player
+      data:
+        source: '{{ favorite }}'
+    - delay:
+        seconds: !input cooldown
+  default:
+  - action: logbook.log
+    data:
+      name: NFC-Musikbox
+      message: Karte {{ tag_id }} ist keiner Wiedergabe zugeordnet
+  - action: persistent_notification.create
+    enabled: !input notify_unknown
+    data:
+      notification_id: nfc_musikbox_karte_{{ tag_id }}
+      title: 'NFC-Musikbox: Karte ohne Zuordnung'
+      message: 'Karte **{{ tag_id }}** ist noch keinem Favoriten zugeordnet.
+
+
+        Zeile für die Eingabe "Karten" (Namen des Favoriten ergänzen):
+
+
+        `"{{ tag_id }}": "Name des Favoriten"`'

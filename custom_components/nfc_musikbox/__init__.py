@@ -143,12 +143,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     for reader in data.readers.values():
-        controller = ReaderController(hass, reader, store, data.options)
-        controller.async_start()
-        data.controllers[reader.subentry_id] = controller
         led = LedSync(hass, reader)
         led.async_start()
         data.leds[reader.subentry_id] = led
+        controller = ReaderController(hass, reader, store, data.options, on_locked=led.flash_locked)
+        controller.async_start()
+        data.controllers[reader.subentry_id] = controller
     entry.async_on_unload(
         store.async_add_listener(
             lambda event, tag_id: _async_handle_store_event(hass, entry, event, tag_id)

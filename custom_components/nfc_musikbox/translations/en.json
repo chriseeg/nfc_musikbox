@@ -76,6 +76,9 @@
     "switch": {
       "enabled": {
         "name": "Enabled"
+      },
+      "parental": {
+        "name": "Parental controls"
       }
     },
     "select": {
@@ -90,6 +93,12 @@
     "number": {
       "start_volume": {
         "name": "Start volume"
+      },
+      "max_volume": {
+        "name": "Maximum volume"
+      },
+      "sleep_timer": {
+        "name": "Sleep timer"
       }
     },
     "binary_sensor": {
@@ -134,6 +143,10 @@
         "repeat": {
           "name": "Repeat",
           "description": "Music mode only. Leave empty = do not change the speaker setting."
+        },
+        "allow_in_quiet": {
+          "name": "Allowed during quiet time",
+          "description": "Card also works during the quiet time of the parental controls (e.g. sleep music)."
         }
       }
     },

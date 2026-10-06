@@ -24,6 +24,12 @@
   const posMain = (p) => `${p.q ? `Titel ${p.q} · ` : ''}${fmtPos(p.p)}`;
   const PLAYER_STATE = { playing: 'spielt', paused: 'pausiert', idle: 'bereit', buffering: 'lädt', off: 'aus', on: 'an', standby: 'Standby', unavailable: 'nicht erreichbar', unknown: 'unbekannt' };
   const volLabel = (v) => (Number(v) ? `${Number(v)} %` : 'unverändert');
+  const SETTING_LABEL = {
+    start_volume: volLabel,
+    max_volume: (v) => (Number(v) ? `${Number(v)} %` : 'keine Grenze'),
+    sleep_timer: (v) => (Number(v) ? `${Number(v)} min` : 'aus'),
+  };
+  const SETTING_NAME = { start_volume: 'Startlautstärke', max_volume: 'Maximallautstärke', sleep_timer: 'Schlaf-Timer' };
   const REPEAT_LABEL = { off: 'Wiederholen aus', all: 'Wiederholen', one: 'Titel wiederholen' };
   const ic = (n, cls = '') => `<ha-icon class="${cls}" icon="mdi:${n}"></ha-icon>`;
   const NO_TAG = new Set(['none', 'unknown', 'unavailable', '']);
@@ -330,7 +336,7 @@
         h += `<div class="tile ${c.enabled ? '' : 'off'}" data-a="edit" data-t="${esc(c.tag_id)}">
           ${this.art(m.metadata && m.metadata.thumbnail)}
           <div class="meta"><div class="title">${esc(c.name)}</div><div class="media">${esc(title)}</div>
-            <div class="chips">${lying ? `<span class="chip on">${ic('nfc-variant')}liegt auf</span>` : ''}${chips}<span class="chip">${ic('clock-outline')}${esc(ago(this._lastFor(c.tag_id)))}</span>${c.enabled ? '' : `<span class="chip">${ic('power-off')}deaktiviert</span>`}${c.mode === 'simple' ? `<span class="chip">${ic('music')}Musik${c.shuffle ? ' · Zufall' : ''}${c.repeat && c.repeat !== 'off' ? ` · ${REPEAT_LABEL[c.repeat]}` : ''}</span>` : ''}</div>
+            <div class="chips">${lying ? `<span class="chip on">${ic('nfc-variant')}liegt auf</span>` : ''}${chips}<span class="chip">${ic('clock-outline')}${esc(ago(this._lastFor(c.tag_id)))}</span>${c.enabled ? '' : `<span class="chip">${ic('power-off')}deaktiviert</span>`}${c.allow_in_quiet ? `<span class="chip">${ic('weather-night')}Ruhezeit ok</span>` : ''}${c.mode === 'simple' ? `<span class="chip">${ic('music')}Musik${c.shuffle ? ' · Zufall' : ''}${c.repeat && c.repeat !== 'off' ? ` · ${REPEAT_LABEL[c.repeat]}` : ''}</span>` : ''}</div>
             ${pos ? `<div class="media" style="margin-top:6px">${ic('bookmark-outline')} ${esc(pos)}</div>` : ''}</div>
           <button class="play" data-a="test" data-t="${esc(c.tag_id)}" aria-label="Zum Testen von vorne abspielen">${ic('play')}</button></div>`;
       });
@@ -338,7 +344,8 @@
     }
 
     vSettings() {
-      let h = `<div class="wrap"><p class="sub">Jedes Lesegerät gehört zu genau einem Lautsprecher.</p><h2>Lesegeräte</h2>`;
+      let h = `<div class="wrap"><p class="sub">Jedes Lesegerät gehört zu genau einem Lautsprecher.</p><h2>Lesegeräte</h2>
+        <datalist id="quiet-entities">${Object.keys(this._hass.states).filter((id) => /^(input_boolean|schedule|binary_sensor|calendar)\./.test(id)).sort().map((id) => `<option value="${esc(id)}">`).join('')}</datalist>`;
       if (!this.readers.length) h += `<div class="empty"><b>Noch kein Lesegerät</b>Füge dein ESPHome-Lesegerät in der Integration hinzu.</div>`;
       const onTag = (r) => { const st = r.card_sensor && this._hass.states[r.card_sensor]; return st ? st.state : null; };
       this.readers.forEach((r) => {
@@ -349,9 +356,14 @@
           <div class="chips"><span class="chip">${ic('speaker')}${esc(r.player_name)}${pl ? ` · ${esc(PLAYER_STATE[pl.state] || pl.state)}` : ''}</span>
             <span class="chip ${r.supports_restore ? 'on' : ''}">${ic(r.supports_restore ? 'bookmark-check-outline' : 'restart')}${r.supports_restore ? 'Fortsetzen an der Stelle' : 'nur von vorne'}</span>
             ${tag && !NO_TAG.has(tag) ? `<span class="chip on">${ic('cards-outline')}${esc(card ? card.name : tag)}</span>` : ''}</div>
-          <label class="f">Startlautstärke</label>
-          <div class="vol">${ic('volume-medium')}<input type="range" min="0" max="100" step="5" value="${Number(r.start_volume) || 0}" data-vol="${esc(r.id)}" aria-label="Startlautstärke">
-            <span class="vv" data-vv="${esc(r.id)}">${volLabel(r.start_volume)}</span></div>
+          ${this.slider(r, 'start_volume', 'Startlautstärke', 'volume-medium', 100)}
+          <label class="f">Kindersicherung</label>
+          <button class="swrow" data-a="toggle-parental" data-r="${esc(r.id)}"><span class="t">Kindersicherung aktiv<small>${r.parental ? 'Grenzen unten gelten.' : 'Aus: keine Grenzen, keine Ruhezeit.'}</small></span><span class="sw ${r.parental ? 'on' : ''}"></span></button>
+          ${r.parental ? `${this.slider(r, 'max_volume', 'Maximallautstärke', 'volume-high', 100)}
+          ${this.slider(r, 'sleep_timer', 'Schlaf-Timer', 'timer-sand', 180)}
+          <label class="f">Ruhezeit, solange diese Entität „an“ ist</label>
+          <input type="text" list="quiet-entities" data-quiet="${esc(r.id)}" value="${esc(r.quiet_entity || '')}" placeholder="z. B. schedule.schlafenszeit" autocomplete="off">
+          <p class="hint">${r.quiet_entity ? (r.quiet_active ? '<b>Ruhezeit jetzt aktiv.</b> ' : 'Ruhezeit gerade nicht aktiv. ') : ''}In der Ruhezeit funktionieren nur Karten mit „Auch in der Ruhezeit“. Leer lassen = keine Ruhezeit.</p>` : ''}
           ${r.ready ? '' : `<p class="hint" style="color:var(--bad)">Sensor „Karte auf dem Reader“ fehlt. Läuft auf dem Lesegerät die Firmware v3?</p>`}
           ${r.ready && !this._online(r) ? `<p class="hint" style="color:var(--bad)">Nicht verbunden${this._offlineSince(r)}.</p>` : ''}</div>`;
       });
@@ -398,6 +410,7 @@
             <span class="t">${esc(r.title)}<small>${r.ready ? `→ ${esc(r.player_name)}${this._online(r) ? '' : ' · nicht verbunden'}` : 'Sensor „Karte auf dem Reader“ fehlt'}</small></span></button>`).join('')
           : `<p class="hint">Noch kein Lesegerät eingerichtet. <button class="btn small" data-a="settings">Zu den Lesegeräten</button></p>`}
           ${sh.edit ? `<label class="f">Karte</label><button class="swrow" data-a="toggle-enabled"><span class="t">Karte aktiv<small>${sh.enabled ? 'Reagiert auf das Auflegen.' : 'Deaktiviert: Auflegen bewirkt nichts.'}</small></span><span class="sw ${sh.enabled ? 'on' : ''}"></span></button>
+            <button class="swrow" data-a="toggle-quiet" style="margin-top:8px"><span class="t">Auch in der Ruhezeit<small>${sh.allow_in_quiet ? 'Funktioniert auch während der Ruhezeit (z. B. Einschlafmusik).' : 'In der Ruhezeit der Kindersicherung gesperrt.'}</small></span><span class="sw ${sh.allow_in_quiet ? 'on' : ''}"></span></button>
             <label class="f">Testen</label><div class="tests"><button class="btn small" data-a="test" data-t="${esc(sh.tag_id)}">${ic('play')}Von vorne</button>
             ${sh.mode === 'tonie' ? `<button class="btn small" data-a="test-resume" data-t="${esc(sh.tag_id)}">${ic('bookmark-outline')}Fortsetzen</button>` : ''}</div>
             <p class="hint">Spielt auf dem Lautsprecher des ersten passenden Lesegeräts, ohne dass die Karte aufliegt.</p>` : ''}
@@ -444,23 +457,37 @@
     }
 
     /* ---------- Ereignisse ---------- */
-    async _change(e) {
-      const reader = e.target.dataset && e.target.dataset.vol;
-      if (!reader) return;
-      const value = Number(e.target.value);
+    slider(r, key, label, icon, max) {
+      return `<label class="f">${label}</label>
+          <div class="vol">${ic(icon)}<input type="range" min="0" max="${max}" step="5" value="${Number(r[key]) || 0}" data-set="${key}" data-r="${esc(r.id)}" aria-label="${label}">
+            <span class="vv" data-lab="${esc(r.id)}:${key}">${SETTING_LABEL[key](r[key])}</span></div>`;
+    }
+
+    async _updateReader(reader, changes, text) {
       const r = this.readers.find((x) => x.id === reader);
-      if (r) r.start_volume = value;
+      if (r) Object.assign(r, changes);
       try {
-        await this.ws({ type: `${DOMAIN}/reader/update`, reader, start_volume: value });
-        this.toast(`Startlautstärke: ${volLabel(value)}`);
+        await this.ws({ type: `${DOMAIN}/reader/update`, reader, ...changes });
+        if (text) this.toast(text);
       } catch (err) { this.toast(errMsg(err), true); }
     }
 
+    async _change(e) {
+      const d = e.target.dataset || {};
+      if (d.set) {
+        const value = Number(e.target.value);
+        await this._updateReader(d.r, { [d.set]: value }, `${SETTING_NAME[d.set]}: ${SETTING_LABEL[d.set](value)}`);
+      } else if (d.quiet) {
+        const value = e.target.value.trim();
+        await this._updateReader(d.quiet, { quiet_entity: value || null }, value ? `Ruhezeit: ${value}` : 'Ruhezeit entfernt');
+      }
+    }
+
     _input(e) {
-      const vr = e.target.dataset && e.target.dataset.vol;
-      if (vr) {
-        const lab = [...this.shadowRoot.querySelectorAll('[data-vv]')].find((x) => x.dataset.vv === vr);
-        if (lab) lab.textContent = volLabel(e.target.value);
+      const ds = e.target.dataset || {};
+      if (ds.set) {
+        const lab = [...this.shadowRoot.querySelectorAll('[data-lab]')].find((x) => x.dataset.lab === `${ds.r}:${ds.set}`);
+        if (lab) lab.textContent = SETTING_LABEL[ds.set](e.target.value);
         return;
       }
       const k = e.target.dataset && e.target.dataset.in;
@@ -507,6 +534,12 @@
           case 'set-shuffle': S.sheet.shuffle = JSON.parse(el.dataset.v); this.render(); break;
           case 'set-repeat': S.sheet.repeat = el.dataset.v === 'null' ? null : el.dataset.v; this.render(); break;
           case 'toggle-enabled': S.sheet.enabled = !S.sheet.enabled; this.render(); break;
+          case 'toggle-quiet': S.sheet.allow_in_quiet = !S.sheet.allow_in_quiet; this.render(); break;
+          case 'toggle-parental': {
+            const r = this.readers.find((x) => x.id === el.dataset.r);
+            if (r) { await this._updateReader(r.id, { parental: !r.parental }, `Kindersicherung ${r.parental ? 'aus' : 'an'}`); this.render(); }
+            break;
+          }
           case 'reset-pos':
             await this.ws({ type: `${DOMAIN}/position/reset`, tag_id: S.sheet.tag_id });
             this.toast('Gemerkte Stelle gelöscht'); break;
@@ -536,6 +569,7 @@
         edit: edit && !!card, tag_id: tagId, name: card ? card.name : (t && t.name !== tagId ? t.name : ''),
         media: card ? card.media : null, mode: card ? card.mode : 'tonie', enabled: card ? card.enabled : true,
         shuffle: card && typeof card.shuffle === 'boolean' ? card.shuffle : null, repeat: card ? card.repeat || null : null,
+        allow_in_quiet: card ? !!card.allow_in_quiet : false,
         sel: new Set(sel), error: null, saving: false,
       };
       this.render();
@@ -602,7 +636,7 @@
       try {
         // Alle ausgewählt = an allen Lesegeräten, auch künftigen
         const readers = sel.length === ready.length ? [] : sel;
-        await this.ws({ type: `${DOMAIN}/card/save`, tag_id: sh.tag_id, name: sh.name, media: sh.media, mode: sh.mode, enabled: sh.enabled, readers, shuffle: sh.shuffle, repeat: sh.repeat });
+        await this.ws({ type: `${DOMAIN}/card/save`, tag_id: sh.tag_id, name: sh.name, media: sh.media, mode: sh.mode, enabled: sh.enabled, readers, shuffle: sh.shuffle, repeat: sh.repeat, allow_in_quiet: sh.allow_in_quiet });
         await this._syncTagName(sh.tag_id, sh.name);
         this.S.sheet = null;
         this.render();

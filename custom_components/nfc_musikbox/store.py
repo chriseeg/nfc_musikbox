@@ -55,6 +55,27 @@ class ReaderSettings:
 
     # Lautstärke in Prozent beim Auflegen einer Karte; 0 = nicht ändern
     start_volume: int = 0
+    # Kindersicherung: Hauptschalter und Bausteine (0/None = Baustein aus)
+    parental: bool = True
+    max_volume: int = 0
+    sleep_timer: int = 0  # Minuten
+    quiet_entity: str | None = None  # Ruhezeit, solange diese Entität "on" ist
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> ReaderSettings:
+        def percent(key: str) -> int:
+            value = raw.get(key, 0)
+            return min(100, max(0, int(value))) if isinstance(value, int | float) else 0
+
+        sleep = raw.get("sleep_timer", 0)
+        quiet = raw.get("quiet_entity")
+        return cls(
+            start_volume=percent("start_volume"),
+            parental=bool(raw.get("parental", True)),
+            max_volume=percent("max_volume"),
+            sleep_timer=min(240, max(0, int(sleep))) if isinstance(sleep, int | float) else 0,
+            quiet_entity=quiet if isinstance(quiet, str) and quiet else None,
+        )
 
 
 @dataclass(slots=True)
@@ -87,6 +108,8 @@ class Card:
     # Nur im Musik-Modus; None = Einstellung des Players nicht ändern
     shuffle: bool | None = None
     repeat: RepeatMode | None = None
+    # Kindersicherung: Karte darf auch während der Ruhezeit spielen (z. B. Einschlafmusik)
+    allow_in_quiet: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Card:
@@ -102,6 +125,7 @@ class Card:
             readers=list(data.get("readers", [])),
             shuffle=shuffle if isinstance(shuffle, bool) else None,
             repeat=repeat if repeat in REPEAT_MODES else None,
+            allow_in_quiet=bool(data.get("allow_in_quiet", False)),
         )
 
     def works_on(self, reader_id: str) -> bool:
@@ -143,11 +167,7 @@ class CardStore:
         self.reader_settings = {}
         for reader_id, raw in data.get("reader_settings", {}).items():
             if isinstance(raw, dict):
-                volume = raw.get("start_volume", 0)
-                volume = int(volume) if isinstance(volume, int | float) else 0
-                self.reader_settings[reader_id] = ReaderSettings(
-                    start_volume=min(100, max(0, volume))
-                )
+                self.reader_settings[reader_id] = ReaderSettings.from_dict(raw)
         _LOGGER.debug(
             "Store geladen: %d Karten, %d Positionen", len(self.cards), len(self.positions)
         )
@@ -225,10 +245,9 @@ class CardStore:
     def get_reader_settings(self, reader_id: str) -> ReaderSettings:
         return self.reader_settings.get(reader_id) or ReaderSettings()
 
-    async def async_set_reader_settings(self, reader_id: str, *, start_volume: int) -> None:
-        self.reader_settings[reader_id] = ReaderSettings(
-            start_volume=min(100, max(0, start_volume))
-        )
+    async def async_set_reader_settings(self, reader_id: str, **changes: Any) -> None:
+        current = asdict(self.get_reader_settings(reader_id))
+        self.reader_settings[reader_id] = ReaderSettings.from_dict({**current, **changes})
         await self.async_save()
         self._notify(StoreEvent.READER, reader_id)
 

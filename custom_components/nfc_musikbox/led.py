@@ -103,6 +103,28 @@ class LedSync:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    @callback
+    def flash_locked(self) -> None:
+        """Firmware v4: LEDs blinken dreimal; der gespeicherte Wiedergabestatus bleibt."""
+        action = self.reader.led_action
+        if action is None or self.hass.is_stopping:
+            return
+        if not self.hass.services.has_service(ESPHOME_DOMAIN, action):
+            return
+        task = self.hass.async_create_background_task(
+            self._call_locked(action), f"nfc_musikbox {self.reader.title} LED"
+        )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def _call_locked(self, action: str) -> None:
+        try:
+            await self.hass.services.async_call(
+                ESPHOME_DOMAIN, action, {"player_state": "locked"}, blocking=True
+            )
+        except HomeAssistantError as err:
+            _LOGGER.debug("%s: Sperr-Signal nicht gesendet: %s", self.reader.title, err)
+
     async def _send(self, force: bool) -> None:
         action = self.reader.led_action
         if action is None:

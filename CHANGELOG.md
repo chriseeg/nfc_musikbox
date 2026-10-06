@@ -4,6 +4,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.1]
+
+### Behoben
+- Fehler „Task was destroyed but it is pending“ (LED-Status) beim Herunterfahren von Home
+  Assistant: Während HA stoppt, wird kein LED-Status mehr gesendet; offene Aufträge werden
+  beim Entladen abgebrochen.
+
 ## [0.6.0]
 
 ### Geändert

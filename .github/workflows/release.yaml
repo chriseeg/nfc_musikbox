@@ -1,22 +1,32 @@
 name: Release
 
-# Tag "vX.Y.Z" pushen -> GitHub-Release mit den Notizen aus CHANGELOG.md.
+# Tag "vX.Y.Z" pushen oder Workflow manuell mit Version starten
+# -> GitHub-Release (legt den Tag auf main an) mit den Notizen aus CHANGELOG.md.
 # HACS zeigt Releases als installierbare Versionen an.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version ohne v, z. B. 0.5.0 (muss zur manifest.json passen)"
+        required: true
 
 permissions:
   contents: write
 
 jobs:
   release:
+    # Manuell nur von main, damit kein Release aus einem Feature-Branch entsteht
+    if: github.event_name == 'push' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - name: Version im Manifest prüfen
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${VERSION#v}"
           manifest=$(python3 -c "import json;print(json.load(open('custom_components/nfc_musikbox/manifest.json'))['version'])")
           if [ "$tag" != "$manifest" ]; then
             echo "Tag $tag passt nicht zur Manifest-Version $manifest" >&2
@@ -24,12 +34,17 @@ jobs:
           fi
       - name: Notizen aus CHANGELOG
         run: |
-          awk -v v="${GITHUB_REF_NAME#v}" '
+          awk -v v="${VERSION#v}" '
             $0 ~ "^## \\[" v "\\]" {on=1; next}
             on && /^## \[/ {exit}
             on {print}
           ' CHANGELOG.md > notes.md
           test -s notes.md || echo "Siehe CHANGELOG.md" > notes.md
+      - name: Tag-Name bestimmen
+        run: echo "TAG=v${VERSION#v}" >> "$GITHUB_ENV"
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ env.TAG }}
           body_path: notes.md

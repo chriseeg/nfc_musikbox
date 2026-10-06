@@ -76,6 +76,9 @@
     "switch": {
       "enabled": {
         "name": "Aktiv"
+      },
+      "parental": {
+        "name": "Kindersicherung"
       }
     },
     "select": {
@@ -90,6 +93,17 @@
     "number": {
       "start_volume": {
         "name": "Startlautstärke"
+      },
+      "max_volume": {
+        "name": "Maximallautstärke"
+      },
+      "sleep_timer": {
+        "name": "Schlaf-Timer"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Verbindung"
       }
     }
   },
@@ -129,6 +143,10 @@
         "repeat": {
           "name": "Wiederholen",
           "description": "Nur Musik-Modus. Leer lassen = Einstellung des Lautsprechers nicht ändern."
+        },
+        "allow_in_quiet": {
+          "name": "Auch in der Ruhezeit",
+          "description": "Karte funktioniert auch während der Ruhezeit der Kindersicherung (z. B. Einschlafmusik)."
         }
       }
     },

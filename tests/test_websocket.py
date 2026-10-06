@@ -62,6 +62,7 @@ async def test_subscribe_and_save(
     assert first["cards"] == []
     (reader,) = first["readers"]
     assert reader["ready"] is True
+    assert reader["online"] is True
 
     # Karte gescannt, noch ohne Zuordnung -> erscheint unter "seen"
     hass.states.async_set(CARD_SENSOR, A)

@@ -40,6 +40,10 @@ assign_card:
             - "off"
             - all
             - one
+    allow_in_quiet:
+      default: false
+      selector:
+        boolean:
 
 remove_card:
   fields:

@@ -3,15 +3,28 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 import logging
 from typing import Any
 
 from homeassistant.components.media_player.const import MediaPlayerEntityFeature
-from homeassistant.const import STATE_PAUSED, STATE_PLAYING, STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State, callback
+from homeassistant.const import (
+    STATE_ON,
+    STATE_PAUSED,
+    STATE_PLAYING,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+)
+from homeassistant.core import (
+    CALLBACK_TYPE,
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    State,
+    callback,
+)
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -34,11 +47,17 @@ from .players import (
     snapshot_position,
 )
 from .reader import ReaderConfig
-from .store import TITLE_MAX_LEN, Card, CardStore
+from .store import TITLE_MAX_LEN, Card, CardStore, ReaderSettings, StoreEvent
 
 _LOGGER = logging.getLogger(__name__)
 
 IGNORED_STATES = {STATE_UNAVAILABLE, STATE_UNKNOWN, ""}
+
+# Schlaf-Timer: Ausblenden über diese Dauer in so vielen Schritten
+SLEEP_FADE_SECONDS = 15.0
+SLEEP_FADE_STEPS = 10
+# Toleranz, bevor die Maximallautstärke eingreift (Rundung der Player)
+VOLUME_TOLERANCE = 0.005
 
 
 class ReaderController:
@@ -54,15 +73,23 @@ class ReaderController:
         reader: ReaderConfig,
         store: CardStore,
         options: dict[str, Any],
+        on_locked: Callable[[], None] | None = None,
     ) -> None:
         self.hass = hass
         self.reader = reader
         self.store = store
         self.options = options
+        self._on_locked = on_locked or (lambda: None)
         self._task: asyncio.Task[None] | None = None
         # Karte, deren Fortsetzen gerade läuft; ihre gemerkte Stelle ist dann noch gültig
         self._restoring: str | None = None
         self._unsub: list[Any] = []
+        # Kindersicherung
+        self._blocked: str | None = None  # Karte, die wegen Ruhezeit/Schlaf-Timer gesperrt ist
+        self._sleep_unsub: CALLBACK_TYPE | None = None
+        self._quiet_unsub: CALLBACK_TYPE | None = None
+        self._restore_volume: float | None = None  # nach abgebrochenem Ausblenden
+        self._fading = False
 
     @property
     def name(self) -> str:
@@ -85,9 +112,12 @@ class ReaderController:
         for entity_id, handler in (
             (self.reader.play_event, self._handle_play_button),
             (self.reader.back_event, self._handle_back_button),
+            (self.reader.player, self._handle_player),
         ):
             if entity_id is not None:
                 self._unsub.append(async_track_state_change_event(self.hass, entity_id, handler))
+        self._unsub.append(self.store.async_add_listener(self._handle_store))
+        self._track_quiet()
         _LOGGER.debug(
             "%s: höre auf %s, Player %s (%s)",
             self.name,
@@ -100,6 +130,10 @@ class ReaderController:
         for unsub in self._unsub:
             unsub()
         self._unsub.clear()
+        self._cancel_sleep_timer()
+        if self._quiet_unsub is not None:
+            self._quiet_unsub()
+            self._quiet_unsub = None
         await self._cancel_running()
 
     @property
@@ -136,10 +170,13 @@ class ReaderController:
         _LOGGER.debug("%s: Karte %s -> %s", self.name, removed or "-", placed or "-")
         if placed is not None:
             self.store.mark_seen(placed, self.reader.subentry_id)
+        self._cancel_sleep_timer()
+        blocked_removed = removed is not None and removed == self._blocked
+        self._blocked = None
         interrupted_restore = self._restoring
         previous = self._task
         self._task = self.hass.async_create_background_task(
-            self._run(removed, placed, previous, interrupted_restore),
+            self._run(removed, placed, previous, interrupted_restore, blocked_removed),
             f"nfc_musikbox {self.name}",
         )
 
@@ -149,13 +186,15 @@ class ReaderController:
         placed: str | None,
         previous: asyncio.Task[None] | None,
         interrupted_restore: str | None,
+        blocked_removed: bool = False,
     ) -> None:
         if previous is not None and not previous.done():
             _LOGGER.debug("%s: breche laufenden Ablauf ab", self.name)
             previous.cancel()
             await asyncio.wait([previous])
         try:
-            removed_card = self._active_card(removed)
+            # Eine gesperrte Karte hat nichts gestartet; ihr Entfernen ändert nichts
+            removed_card = None if blocked_removed else self._active_card(removed)
             if removed_card is not None:
                 await self._on_removed(
                     removed_card,
@@ -165,10 +204,19 @@ class ReaderController:
             placed_card = self._active_card(placed)
             if placed is not None and placed_card is None:
                 _LOGGER.debug("%s: Karte %s ist nicht zugeordnet oder inaktiv", self.name, placed)
+            if placed_card is not None and self._quiet_blocks(placed_card):
+                _LOGGER.info("%s: %s in der Ruhezeit gesperrt", self.name, placed_card.name)
+                self._blocked = placed_card.tag_id
+                self._on_locked()
+                if removed_card is not None:
+                    # Kartenwechsel in der Ruhezeit: die alte Karte nicht weiterlaufen lassen
+                    await self._pause_if_playing()
+                return
             if placed_card is not None:
                 if removed is not None:
                     await asyncio.sleep(float(self.options[OPT_CARD_CHANGE_DELAY]))
                 await self._on_placed(placed_card)
+                self._start_sleep_timer(placed_card)
         except HomeAssistantError as err:
             _LOGGER.error("%s: Fehler bei %s -> %s: %s", self.name, removed, placed, err)
 
@@ -234,9 +282,29 @@ class ReaderController:
         if not still_playing and state is not None and state.state == STATE_PLAYING:
             await self.player.async_pause()
 
+    @property
+    def settings(self) -> ReaderSettings:
+        return self.store.get_reader_settings(self.reader.subentry_id)
+
+    def _start_volume_target(self) -> int | None:
+        """Lautstärke in % für den Start: Startlautstärke, begrenzt durch die Maximallautstärke."""
+        settings = self.settings
+        target: int | None = settings.start_volume or None
+        if target is None and self._restore_volume is not None:
+            target = round(self._restore_volume * 100)
+        max_volume = settings.max_volume if settings.parental else 0
+        if max_volume:
+            current = _volume_level(self.player.state)
+            if target is not None:
+                target = min(target, max_volume)
+            elif current is not None and current > max_volume / 100 + VOLUME_TOLERANCE:
+                target = max_volume
+        return target
+
     async def _apply_start_volume(self) -> None:
-        volume = self.store.get_reader_settings(self.reader.subentry_id).start_volume
-        if not volume:
+        volume = self._start_volume_target()
+        self._restore_volume = None
+        if volume is None:
             return
         player = self.player
         if not player.supports(MediaPlayerEntityFeature.VOLUME_SET):
@@ -307,6 +375,163 @@ class ReaderController:
         finally:
             self._restoring = None
 
+    # ---------- Kindersicherung ----------
+
+    def _in_quiet(self) -> bool:
+        settings = self.settings
+        if not settings.parental or not settings.quiet_entity:
+            return False
+        state = self.hass.states.get(settings.quiet_entity)
+        return state is not None and state.state == STATE_ON
+
+    def _quiet_blocks(self, card: Card) -> bool:
+        return self._in_quiet() and not card.allow_in_quiet
+
+    def _card_on_reader(self) -> Card | None:
+        state = self.hass.states.get(self.reader.card_sensor or "")
+        return self._active_card(state.state if state else None)
+
+    async def _pause_if_playing(self) -> None:
+        state = self.player.state
+        if state is not None and state.state == STATE_PLAYING:
+            await self.player.async_pause()
+
+    @callback
+    def _handle_store(self, event: StoreEvent, key: str) -> None:
+        if event is StoreEvent.READER and key == self.reader.subentry_id:
+            self._track_quiet()
+
+    @callback
+    def _track_quiet(self) -> None:
+        if self._quiet_unsub is not None:
+            self._quiet_unsub()
+            self._quiet_unsub = None
+        entity_id = self.settings.quiet_entity
+        if entity_id:
+            self._quiet_unsub = async_track_state_change_event(
+                self.hass, entity_id, self._handle_quiet
+            )
+
+    @callback
+    def _handle_quiet(self, event: Event[EventStateChangedData]) -> None:
+        new_state = event.data["new_state"]
+        old_state = event.data["old_state"]
+        if new_state is None or new_state.state != STATE_ON:
+            return
+        if old_state is not None and old_state.state == STATE_ON:
+            return
+        card = self._card_on_reader()
+        if card is None or not self._quiet_blocks(card):
+            return
+        _LOGGER.info("%s: Ruhezeit beginnt, %s wird pausiert", self.name, card.name)
+        self._run_exclusive(self._stop_for_parental(card), "Ruhezeit")
+
+    @callback
+    def _run_exclusive(self, action: Coroutine[Any, Any, None], label: str) -> None:
+        """Wie ein Kartenereignis: läuft in der Ablauf-Kette und bricht Laufendes ab."""
+        previous = self._task
+
+        async def _wrapped() -> None:
+            if previous is not None and not previous.done():
+                previous.cancel()
+                await asyncio.wait([previous])
+            try:
+                await action
+            except HomeAssistantError as err:
+                _LOGGER.error("%s: %s fehlgeschlagen: %s", self.name, label, err)
+
+        self._task = self.hass.async_create_background_task(
+            _wrapped(), f"nfc_musikbox {self.name} {label}"
+        )
+
+    async def _stop_for_parental(self, card: Card) -> None:
+        """Stelle merken (Hörspiel) und pausieren, wie beim Abziehen; Karte sperren."""
+        self._cancel_sleep_timer()
+        self._blocked = card.tag_id
+        if card.mode == "tonie":
+            position = snapshot_position(self.player.state)
+            if position is not None:
+                self.store.set_position(card.tag_id, position)
+        await self._pause_if_playing()
+
+    @callback
+    def _start_sleep_timer(self, card: Card) -> None:
+        self._cancel_sleep_timer()
+        minutes = self.settings.sleep_timer if self.settings.parental else 0
+        if not minutes:
+            return
+        _LOGGER.debug("%s: Schlaf-Timer %d min für %s", self.name, minutes, card.name)
+
+        @callback
+        def _expired(_now: Any) -> None:
+            self._sleep_unsub = None
+            if self._card_on_reader() is None:
+                return
+            _LOGGER.info("%s: Schlaf-Timer abgelaufen, blende %s aus", self.name, card.name)
+            self._run_exclusive(self._sleep_fade(card), "Schlaf-Timer")
+
+        self._sleep_unsub = async_call_later(self.hass, minutes * 60, _expired)
+
+    @callback
+    def _cancel_sleep_timer(self) -> None:
+        if self._sleep_unsub is not None:
+            self._sleep_unsub()
+            self._sleep_unsub = None
+
+    async def _sleep_fade(self, card: Card) -> None:
+        player = self.player
+        state = player.state
+        if state is None or state.state != STATE_PLAYING:
+            self._blocked = card.tag_id
+            return
+        original = _volume_level(state)
+        if original is None or not player.supports(MediaPlayerEntityFeature.VOLUME_SET):
+            await self._stop_for_parental(card)
+            return
+        # Wird das Ausblenden abgebrochen (Karte abgezogen), beim nächsten Start zurück
+        self._restore_volume = original
+        self._fading = True
+        try:
+            for step in range(1, SLEEP_FADE_STEPS + 1):
+                await asyncio.sleep(SLEEP_FADE_SECONDS / SLEEP_FADE_STEPS)
+                level = round(original * (1 - step / SLEEP_FADE_STEPS) * 100)
+                await player.async_set_volume(level)
+        finally:
+            self._fading = False
+        await self._stop_for_parental(card)
+        await player.async_set_volume(round(original * 100))
+        self._restore_volume = None
+
+    @callback
+    def _handle_player(self, event: Event[EventStateChangedData]) -> None:
+        """Maximallautstärke durchsetzen, solange eine Karte aufliegt."""
+        settings = self.settings
+        if not settings.parental or not settings.max_volume or self.hass.is_stopping:
+            return
+        if self._fading:
+            return
+        volume = _volume_level(event.data["new_state"])
+        limit = settings.max_volume / 100
+        if volume is None or volume <= limit + VOLUME_TOLERANCE:
+            return
+        if self._card_on_reader() is None:
+            return
+        _LOGGER.info(
+            "%s: Lautstärke %d %% über Maximum, setze %d %%",
+            self.name,
+            round(volume * 100),
+            settings.max_volume,
+        )
+        self.hass.async_create_background_task(
+            self._limit_volume(settings.max_volume), f"nfc_musikbox {self.name} Lautstärke"
+        )
+
+    async def _limit_volume(self, percent: int) -> None:
+        try:
+            await self.player.async_set_volume(percent)
+        except HomeAssistantError as err:
+            _LOGGER.warning("%s: Maximallautstärke nicht gesetzt: %s", self.name, err)
+
     # ---------- Tasten ----------
 
     @staticmethod
@@ -367,10 +592,27 @@ class ReaderController:
         except HomeAssistantError as err:
             _LOGGER.error("%s: Taste %s fehlgeschlagen: %s", self.name, label, err)
 
+    def _button_blocked(self) -> bool:
+        """Gesperrte Karte: Tasten dürfen nur noch pausieren."""
+        card = self._card_on_reader()
+        if card is None:
+            return False
+        return card.tag_id == self._blocked or self._quiet_blocks(card)
+
     async def _on_play_button(self) -> None:
+        if self._button_blocked():
+            state = self.player.state
+            if state is not None and state.state == STATE_PLAYING:
+                await self.player.async_pause()
+            else:
+                self._on_locked()
+            return
         await self.player.async_play_pause()
 
     async def _on_back_short(self) -> None:
+        if self._button_blocked():
+            self._on_locked()
+            return
         state = self.player.state
         if state is None or state.state not in (STATE_PLAYING, STATE_PAUSED):
             return
@@ -378,4 +620,14 @@ class ReaderController:
         await self.player.async_seek(target)
 
     async def _on_back_long(self) -> None:
+        if self._button_blocked():
+            self._on_locked()
+            return
         await self.player.async_restart()
+
+
+def _volume_level(state: State | None) -> float | None:
+    if state is None:
+        return None
+    value = state.attributes.get("volume_level")
+    return float(value) if isinstance(value, int | float) else None

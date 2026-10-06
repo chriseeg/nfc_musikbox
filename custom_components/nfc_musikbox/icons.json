@@ -11,6 +11,12 @@
     "switch": {
       "enabled": {
         "default": "mdi:power"
+      },
+      "parental": {
+        "default": "mdi:shield-account",
+        "state": {
+          "off": "mdi:shield-off-outline"
+        }
       }
     },
     "select": {
@@ -24,6 +30,20 @@
     "number": {
       "start_volume": {
         "default": "mdi:volume-medium"
+      },
+      "max_volume": {
+        "default": "mdi:volume-high"
+      },
+      "sleep_timer": {
+        "default": "mdi:timer-sand"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "default": "mdi:lan-connect",
+        "state": {
+          "off": "mdi:lan-disconnect"
+        }
       }
     }
   },

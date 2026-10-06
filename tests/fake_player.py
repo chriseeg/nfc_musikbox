@@ -30,10 +30,11 @@ class FakeSonos:
     ignore_seeks: int = 0
     # supported_features; Standard 0, damit Ablauf-Tests nur den Kern sehen
     features: int = 0
+    volume: float = 0.3
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
     def publish(self) -> None:
-        attrs: dict[str, Any] = {"supported_features": self.features}
+        attrs: dict[str, Any] = {"supported_features": self.features, "volume_level": self.volume}
         if self.q:
             attrs.update(
                 queue_position=self.q,
@@ -94,11 +95,10 @@ class FakeSonos:
                 return
             self.pos, self.updated_at = float(data["seek_position"]), dt_util.utcnow()
             self.publish()
-        elif name in (
-            "media_player.volume_set",
-            "media_player.shuffle_set",
-            "media_player.repeat_set",
-        ):
+        elif name == "media_player.volume_set":
+            self.volume = float(data["volume_level"])
+            self.publish()
+        elif name in ("media_player.shuffle_set", "media_player.repeat_set"):
             pass
         elif name == "sonos.play_queue":
             self.set_playing(int(data["queue_position"]) + 1, 0.0)

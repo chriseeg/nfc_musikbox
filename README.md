@@ -19,8 +19,9 @@ Karte, wo die Wiedergabe stand – wie bei einer Tonie-Box.
 3. *Einstellungen → Geräte & Dienste → Integration hinzufügen → NFC-Musikbox*.
 4. In der Integration **„Lesegerät hinzufügen“**: ESPHome-Gerät und Lautsprecher wählen.
 
-Pro Lesegerät entsteht ein Gerät mit dem Diagnose-Sensor **„Aktuelle Karte“**. Seine
-Attribute zeigen, welche Entitäten gefunden wurden (Karten-Sensor, Tasten, LED-Aktion).
+Pro Lesegerät entsteht ein Gerät mit den Diagnose-Entitäten **„Aktuelle Karte“** und
+**„Verbindung“** (aus = Lesegerät nicht mit Home Assistant verbunden). Die Attribute von „Aktuelle Karte“ zeigen, welche Entitäten gefunden wurden
+(Karten-Sensor, Tasten, LED-Aktion).
 
 ## Verhalten
 
@@ -51,6 +52,21 @@ Lesegerät): Beim Auflegen einer Karte wird vor dem Abspielen diese Lautstärke 
 Karten ohne Zuordnung, deaktivierte Karten und Karten, die für ein anderes Lesegerät
 freigegeben sind, werden ignoriert. Zustandswechsel von/nach `unavailable`/`unknown`
 (Reconnect, HA-Start) lösen nichts aus.
+
+## Kindersicherung
+
+Pro Lesegerät unter *Musikkarten → Lesegeräte → Kindersicherung* (und als Entitäten am
+Lesegerät):
+
+| Baustein | Verhalten |
+|---|---|
+| **Kindersicherung aktiv** (`switch`) | Hauptschalter; aus = keine Grenzen, keine Ruhezeit |
+| **Maximallautstärke** (`number`, 0 = keine Grenze) | Solange eine Karte aufliegt, wird lauteres Drehen (App, Tasten am Lautsprecher) auf den Grenzwert zurückgeregelt. Die Startlautstärke wird darauf begrenzt. Ohne Karte (Eltern hören Musik) gilt keine Grenze. |
+| **Schlaf-Timer** (`number`, Minuten, 0 = aus) | Läuft ab dem Auflegen. Danach wird über ~15 s ausgeblendet und pausiert, die Stelle gemerkt, die alte Lautstärke wiederhergestellt. Play bleibt gesperrt, bis die Karte neu aufgelegt wird (das startet den Timer neu). |
+| **Ruhezeit** (Entität, z. B. `schedule.*` oder `input_boolean.*`) | Solange die Entität „an“ ist, funktionieren nur Karten mit **„Auch in der Ruhezeit“**. Beginnt die Ruhezeit während einer anderen Karte, wird die Stelle gemerkt und pausiert. Tasten können dann nur noch pausieren. |
+
+Bei gesperrter Karte blinken mit **Firmware v4** (`firmware/nfc-musikbox.yaml`) beide LEDs
+dreimal. Mit älterer Firmware passiert sichtbar einfach nichts.
 
 ## Tasten und LED
 

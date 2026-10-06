@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import Any
 
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import CoreState, HomeAssistant, ServiceCall
 from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -213,3 +214,34 @@ async def test_led_reader_offline_then_online(hass: HomeAssistant, player: FakeS
     hass.bus.async_fire("esphome.nfc_reader_online", {"device_id": reader.device_id})
     await settle(hass)
     assert calls == ["playing"]
+
+
+async def test_led_not_scheduled_while_stopping(
+    hass: HomeAssistant, player: FakeSonos, led_calls: list[str]
+) -> None:
+    """Beim Herunterfahren (Player wird unavailable) keinen LED-Auftrag mehr anlegen."""
+    await setup(hass)
+    led_calls.clear()
+    hass.set_state(CoreState.stopping)
+    hass.states.async_set(PLAYER, "unavailable")
+    await hass.async_block_till_done()
+    assert not [t for t in asyncio.all_tasks() if t.get_name().endswith(" LED")]
+    assert led_calls == []
+    hass.set_state(CoreState.running)
+
+
+async def test_led_tasks_cancelled_on_unload(hass: HomeAssistant, player: FakeSonos) -> None:
+    """Hängt ein LED-Auftrag (Gerät antwortet nicht), bricht Entladen ihn ab."""
+    never = asyncio.Event()
+
+    async def _slow(call: ServiceCall) -> None:
+        await never.wait()
+
+    hass.services.async_register("esphome", LED_SERVICE, _slow)
+    entry = await setup(hass)
+    player.set_playing(q=1, pos=0)
+    await asyncio.sleep(0.05)
+    assert [t for t in asyncio.all_tasks() if t.get_name().endswith(" LED") and not t.done()]
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await asyncio.sleep(0)
+    assert not [t for t in asyncio.all_tasks() if t.get_name().endswith(" LED") and not t.done()]

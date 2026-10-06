@@ -33,6 +33,7 @@ ATTR_ENABLED = "enabled"
 ATTR_READERS = "readers"
 ATTR_SHUFFLE = "shuffle"
 ATTR_REPEAT = "repeat"
+ATTR_ALLOW_IN_QUIET = "allow_in_quiet"
 
 # Wie der Media-Selector, aber "metadata" (Titel, Cover) bleibt für die Oberfläche erhalten
 MEDIA_SCHEMA = vol.Schema(
@@ -54,6 +55,7 @@ ASSIGN_SCHEMA = vol.Schema(
         vol.Optional(ATTR_READERS, default=list): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional(ATTR_SHUFFLE): cv.boolean,
         vol.Optional(ATTR_REPEAT): vol.In(REPEAT_MODES),
+        vol.Optional(ATTR_ALLOW_IN_QUIET, default=False): cv.boolean,
     }
 )
 TAG_SCHEMA = vol.Schema({vol.Required(ATTR_TAG_ID): cv.string})
@@ -138,6 +140,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
             readers=_reader_subentries(hass, call.data[ATTR_READERS]),
             shuffle=call.data.get(ATTR_SHUFFLE),
             repeat=call.data.get(ATTR_REPEAT),
+            allow_in_quiet=call.data[ATTR_ALLOW_IN_QUIET],
         )
         await store.async_set_card(card)
         _LOGGER.info("Karte %s (%s) zugeordnet: %s", card.name, tag_id, media)

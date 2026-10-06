@@ -39,6 +39,7 @@ class LedSync:
         self._last_sent: str | None = None
         self._lock = asyncio.Lock()
         self._unsub: list[Any] = []
+        self._tasks: set[asyncio.Task[None]] = set()
 
     @callback
     def async_start(self) -> None:
@@ -63,6 +64,8 @@ class LedSync:
         for unsub in self._unsub:
             unsub()
         self._unsub.clear()
+        for task in self._tasks:
+            task.cancel()
 
     @callback
     def _handle_player(self, event: Event[EventStateChangedData]) -> None:
@@ -91,9 +94,36 @@ class LedSync:
 
     @callback
     def schedule(self, force: bool = False) -> None:
-        self.hass.async_create_background_task(
+        # Beim Herunterfahren meldet der Player "unavailable"; das muss nicht mehr raus
+        if self.hass.is_stopping:
+            return
+        task = self.hass.async_create_background_task(
             self._send(force), f"nfc_musikbox {self.reader.title} LED"
         )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    @callback
+    def flash_locked(self) -> None:
+        """Firmware v4: LEDs blinken dreimal; der gespeicherte Wiedergabestatus bleibt."""
+        action = self.reader.led_action
+        if action is None or self.hass.is_stopping:
+            return
+        if not self.hass.services.has_service(ESPHOME_DOMAIN, action):
+            return
+        task = self.hass.async_create_background_task(
+            self._call_locked(action), f"nfc_musikbox {self.reader.title} LED"
+        )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def _call_locked(self, action: str) -> None:
+        try:
+            await self.hass.services.async_call(
+                ESPHOME_DOMAIN, action, {"player_state": "locked"}, blocking=True
+            )
+        except HomeAssistantError as err:
+            _LOGGER.debug("%s: Sperr-Signal nicht gesendet: %s", self.reader.title, err)
 
     async def _send(self, force: bool) -> None:
         action = self.reader.led_action

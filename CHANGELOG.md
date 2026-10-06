@@ -4,6 +4,32 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.0]
+
+### Hinzugefügt
+- **Kindersicherung** pro Lesegerät: Hauptschalter, Maximallautstärke (solange eine Karte
+  aufliegt), Schlaf-Timer mit Ausblenden, Ruhezeit über eine Entität mit Ausnahme-Karten
+  („Auch in der Ruhezeit“). Panel-Abschnitt, Entitäten `switch`/`number`, WS
+  `reader/update` erweitert, `assign_card` kennt `allow_in_quiet`.
+- **Firmware v4** (`firmware/nfc-musikbox.yaml`): Status `locked` lässt beide LEDs dreimal
+  blinken. Behebt außerdem einen Konfigurationsfehler der v3 mit ESPHome 2026.9
+  (`effect` und `transition_length` in einem `light.turn_on`).
+
+## [0.7.0]
+
+### Hinzugefügt
+- Hinweis im Panel, wenn ein Lesegerät nicht verbunden ist (Banner mit „seit …“, Hinweis in
+  Lesegeräte-Ansicht und bei „Funktioniert an“).
+- `binary_sensor` „Verbindung“ (Diagnose, `connectivity`) pro Lesegerät, z. B. für eine
+  Benachrichtigung, wenn die Box länger offline ist.
+
+## [0.6.1]
+
+### Behoben
+- Fehler „Task was destroyed but it is pending“ (LED-Status) beim Herunterfahren von Home
+  Assistant: Während HA stoppt, wird kein LED-Status mehr gesendet; offene Aufträge werden
+  beim Entladen abgebrochen.
+
 ## [0.6.0]
 
 ### Geändert

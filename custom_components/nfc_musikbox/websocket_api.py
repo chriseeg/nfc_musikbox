@@ -14,6 +14,7 @@ import voluptuous as vol
 
 from .const import DOMAIN, SIGNAL_UPDATED
 from .players import fmt_position
+from .reader import reader_online
 from .services import MEDIA_SCHEMA, loaded_data, start_test_playback
 from .store import CARD_MODES, REPEAT_MODES, Card
 
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
     from . import NfcMusikboxData
 
 TAG = vol.All(cv.string, lambda v: v.strip().upper())
+PERCENT = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
 
 
 @callback
@@ -45,6 +47,17 @@ def _card_dict(data: NfcMusikboxData, card: Card) -> dict[str, Any]:
     }
 
 
+def _reader_settings_dict(
+    hass: HomeAssistant, data: NfcMusikboxData, reader_id: str
+) -> dict[str, Any]:
+    settings = data.store.get_reader_settings(reader_id)
+    quiet = hass.states.get(settings.quiet_entity) if settings.quiet_entity else None
+    return {
+        **asdict(settings),
+        "quiet_active": bool(settings.parental and quiet is not None and quiet.state == "on"),
+    }
+
+
 def snapshot(hass: HomeAssistant, data: NfcMusikboxData) -> dict[str, Any]:
     """Gesamter Zustand für das Panel."""
     readers = []
@@ -65,8 +78,9 @@ def snapshot(hass: HomeAssistant, data: NfcMusikboxData) -> dict[str, Any]:
                 "card_sensor": reader.card_sensor,
                 "current_tag": card_state.state if card_state else None,
                 "ready": reader.is_ready,
+                "online": reader_online(hass, reader),
                 "supports_restore": bool(controller and controller.player.supports_restore),
-                "start_volume": data.store.get_reader_settings(reader.subentry_id).start_volume,
+                **_reader_settings_dict(hass, data, reader.subentry_id),
             }
         )
     return {
@@ -122,6 +136,7 @@ def ws_subscribe(
         vol.Optional("readers", default=list): [cv.string],
         vol.Optional("shuffle", default=None): vol.Any(None, cv.boolean),
         vol.Optional("repeat", default=None): vol.Any(None, vol.In(REPEAT_MODES)),
+        vol.Optional("allow_in_quiet", default=False): cv.boolean,
     }
 )
 @websocket_api.async_response
@@ -144,6 +159,7 @@ async def ws_save_card(
         readers=msg["readers"],
         shuffle=msg["shuffle"],
         repeat=msg["repeat"],
+        allow_in_quiet=msg["allow_in_quiet"],
     )
     await data.store.async_set_card(card)
     connection.send_result(msg["id"], _card_dict(data, card))
@@ -220,7 +236,11 @@ def ws_play_card(
     {
         vol.Required("type"): f"{DOMAIN}/reader/update",
         vol.Required("reader"): cv.string,
-        vol.Required("start_volume"): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+        vol.Optional("start_volume"): PERCENT,
+        vol.Optional("max_volume"): PERCENT,
+        vol.Optional("sleep_timer"): vol.All(vol.Coerce(int), vol.Range(min=0, max=180)),
+        vol.Optional("parental"): cv.boolean,
+        vol.Optional("quiet_entity"): vol.Any(None, "", cv.entity_id),
     }
 )
 @websocket_api.async_response
@@ -233,5 +253,10 @@ async def ws_update_reader(
     if msg["reader"] not in data.readers:
         connection.send_error(msg["id"], "unknown_reader", "Unbekanntes Lesegerät")
         return
-    await data.store.async_set_reader_settings(msg["reader"], start_volume=msg["start_volume"])
+    changes = {k: v for k, v in msg.items() if k not in ("id", "type", "reader")}
+    quiet = changes.get("quiet_entity")
+    if quiet and hass.states.get(quiet) is None:
+        connection.send_error(msg["id"], "unknown_entity", f"Entität {quiet} gibt es nicht")
+        return
+    await data.store.async_set_reader_settings(msg["reader"], **changes)
     connection.send_result(msg["id"])

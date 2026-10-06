@@ -4,9 +4,6 @@ Karte auflegen = Musik, Karte abziehen = Pause. Die Integration verbindet einen
 ESPHome-NFC-Leser (PN532, zwei Tasten) mit einem Lautsprecher und merkt sich pro
 Karte, wo die Wiedergabe stand – wie bei einer Tonie-Box.
 
-> **Status:** in Entwicklung. Fertig: Einrichtung, Wiedergabe-Logik (Tonie/Einfach),
-> Tasten, LED, Oberfläche „Musikkarten“. Es folgen Migration und Doku (M5).
-
 ## Voraussetzungen
 
 - Home Assistant **2026.9** oder neuer
@@ -16,9 +13,9 @@ Karte, wo die Wiedergabe stand – wie bei einer Tonie-Box.
 
 ## Installation (HACS)
 
-1. HACS → Integrationen → ⋮ → *Benutzerdefinierte Repositories* →
-   `https://github.com/chriseeg/nfc_musikbox`, Kategorie *Integration*.
-2. „NFC-Musikbox“ installieren, Home Assistant neu starten.
+1. HACS → ⋮ (oben rechts) → *Benutzerdefinierte Repositories* →
+   `https://github.com/chriseeg/nfc_musikbox`, Typ *Integration*.
+2. „NFC-Musikbox“ suchen → *Herunterladen* (neueste Version) → Home Assistant neu starten.
 3. *Einstellungen → Geräte & Dienste → Integration hinzufügen → NFC-Musikbox*.
 4. In der Integration **„Lesegerät hinzufügen“**: ESPHome-Gerät und Lautsprecher wählen.
 
@@ -110,10 +107,37 @@ Außerdem: `nfc_musikbox.remove_card`, `nfc_musikbox.reset_position`,
 | Toleranz beim Spulen | 10 s | Ab hier gilt die Stelle als erreicht |
 | Spulversuche / Pause | 3 / 2 s | Wiederholungen von `media_seek` |
 
+## Umstieg von den Blueprints
+
+Wer vorher die Blueprints `nfc_musikbox_karte_tonie` / `nfc_musikbox_lesegeraet` und die
+Custom Card „NFC-Karten-Manager“ genutzt hat:
+
+1. Integration einrichten, Karten im Panel neu zuordnen und testen.
+2. Danach entfernen (sonst reagieren alte und neue Logik doppelt):
+   - Automationen aus den Blueprints (pro Karte und pro Lesegerät)
+   - Helfer `input_text.nfc_position_*` und den Sperr-Timer
+   - die Blueprints selbst
+   - Dashboard-Ressource `/local/nfc-karten/nfc-karten.js` und das Dashboard der Card
+3. Die Firmware des Lesegeräts bleibt unverändert.
+
+Gemerkte Positionen aus den `input_text`-Helfern werden nicht übernommen; beim nächsten
+Abziehen der Karte wird die Stelle neu gemerkt.
+
 ## Bekannte Einschränkungen
 
 - Playlisten mit **Zufallswiedergabe**: Die Queue-Position ist nicht stabil, Fortsetzen
   trifft dann nicht den richtigen Titel.
+- **Fortsetzen an der Stelle** gibt es nur für Sonos; andere Player starten von vorne.
+- Gemerkt wird **pro Karte**, nicht pro Lesegerät: Liegt dieselbe Karte an einem zweiten
+  Lesegerät, setzt sie dort an der zuletzt gemerkten Stelle fort.
+- Das Panel ist nur für **Administratoren** sichtbar. Die Bedienung per Karte und Tasten
+  braucht kein Konto.
+
+## Release erstellen
+
+`version` in `manifest.json` und einen Abschnitt `## [X.Y.Z]` in `CHANGELOG.md` pflegen,
+mergen, dann Tag `vX.Y.Z` auf `main` pushen. Der Workflow „Release“ erzeugt das
+GitHub-Release; HACS bietet es danach als Update an.
 
 ## Debugging
 

@@ -4,6 +4,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0]
+
+Erstes Release für HACS. Ersetzt die Blueprints „NFC-Musikbox – Karte“ und
+„NFC-Musikbox – Lesegerät“ sowie die Custom Card „NFC-Karten-Manager“.
+
+### Hinzugefügt
+- Release-Workflow: Tag `vX.Y.Z` erzeugt ein GitHub-Release (prüft die Manifest-Version).
+- README: Umstieg von den Blueprints, Einschränkungen, Release-Ablauf.
+- Gesicherter Altbestand aus Home Assistant unter `reference/ha-altbestand/`.
+
 ## [0.4.0]
 
 ### Hinzugefügt

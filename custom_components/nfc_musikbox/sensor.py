@@ -13,7 +13,10 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from . import NfcMusikboxConfigEntry, NfcMusikboxData
 from .const import DOMAIN, NO_CARD
+from .entity import CardEntity, async_setup_card_entities
+from .players import fmt_position
 from .reader import ReaderConfig
+from .store import StoreEvent
 
 
 async def async_setup_entry(
@@ -24,6 +27,9 @@ async def async_setup_entry(
     data = entry.runtime_data
     for reader in data.readers.values():
         async_add_entities([ReaderCardSensor(data, reader)], config_subentry_id=reader.subentry_id)
+    async_setup_card_entities(
+        hass, entry, async_add_entities, lambda d, card: [CardPositionSensor(d, card, "position")]
+    )
 
 
 class ReaderCardSensor(SensorEntity):
@@ -76,3 +82,21 @@ class ReaderCardSensor(SensorEntity):
             return
         card = self._data.store.cards.get(tag_id)
         self._attr_native_value = card.name if card else tag_id
+
+
+class CardPositionSensor(CardEntity, SensorEntity):
+    """Gemerkte Stelle einer Tonie-Karte, z. B. "Titel 2 · 1:10:10 · Kapitel 2"."""
+
+    _update_events = frozenset({StoreEvent.CARD_UPDATED, StoreEvent.POSITION})
+
+    @property
+    def native_value(self) -> str | None:
+        position = self._data.store.positions.get(self._tag_id)
+        return fmt_position(position) if position else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        position = self._data.store.positions.get(self._tag_id)
+        if position is None:
+            return {}
+        return {"queue_position": position.q, "seconds": position.p, "title": position.t}

@@ -23,6 +23,11 @@ PLAY_EVENT_NAME: Final = "Ereignis Taste Play/Pause"
 BACK_EVENT_SUFFIX: Final = "ereignis_taste_zuruck"
 BACK_EVENT_NAME: Final = "Ereignis Taste Zurück"
 
+EVENT_TYPE_SHORT: Final = "kurz"
+EVENT_TYPE_LONG: Final = "lang"
+# Ältere Tasten-Events (z. B. wiederhergestellter Zustand nach Reconnect) ignorieren
+BUTTON_EVENT_MAX_AGE: Final = 5.0
+
 LED_ACTION_SUFFIX: Final = "set_playback_state"
 EVENT_READER_ONLINE: Final = "esphome.nfc_reader_online"
 
@@ -49,5 +54,15 @@ DEFAULT_OPTIONS: Final[dict[str, float]] = {
     OPT_SKIP_BACK: 30.0,
 }
 
+# Dispatcher-Signal: Karten, Positionen, gesehene Tags oder Lesegeräte geändert
+SIGNAL_UPDATED: Final = f"{DOMAIN}_updated"
+# Dispatcher-Signal mit der Tag-ID einer neu angelegten Karte (Entitäten anlegen)
+SIGNAL_CARD_ADDED: Final = f"{DOMAIN}_card_added"
+
 STORAGE_KEY: Final = DOMAIN
 STORAGE_VERSION: Final = 1
+
+
+def card_device_identifier(tag_id: str) -> tuple[str, str]:
+    """Geräte-Identifier einer Karte."""
+    return (DOMAIN, f"card_{tag_id}")

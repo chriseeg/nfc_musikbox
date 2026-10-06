@@ -24,3 +24,8 @@ warn_unused_ignores = false
 disallow_subclassing_any = false
 disallow_untyped_decorators = false
 files = ["custom_components/nfc_musikbox"]
+
+[[tool.mypy.overrides]]
+# HA reexportiert z. B. websocket_api.ActiveConnection ohne "as"
+module = ["homeassistant.*"]
+implicit_reexport = true

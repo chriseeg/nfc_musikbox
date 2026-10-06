@@ -1,0 +1,39 @@
+{
+  "entity": {
+    "sensor": {
+      "current_card": {
+        "default": "mdi:nfc-variant"
+      },
+      "position": {
+        "default": "mdi:bookmark-music-outline"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "default": "mdi:power"
+      }
+    },
+    "select": {
+      "mode": {
+        "default": "mdi:cards-playing-outline",
+        "state": {
+          "simple": "mdi:play-circle-outline"
+        }
+      }
+    }
+  },
+  "services": {
+    "assign_card": {
+      "service": "mdi:nfc-variant"
+    },
+    "remove_card": {
+      "service": "mdi:nfc-variant-off"
+    },
+    "reset_position": {
+      "service": "mdi:bookmark-remove-outline"
+    },
+    "play_card": {
+      "service": "mdi:play"
+    }
+  }
+}

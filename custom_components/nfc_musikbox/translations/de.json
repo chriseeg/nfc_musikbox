@@ -68,7 +68,116 @@
     "sensor": {
       "current_card": {
         "name": "Aktuelle Karte"
+      },
+      "position": {
+        "name": "Gemerkte Stelle"
       }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Aktiv"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Betriebsart",
+        "state": {
+          "tonie": "Tonie",
+          "simple": "Einfach"
+        }
+      }
+    }
+  },
+  "services": {
+    "assign_card": {
+      "name": "Karte zuordnen",
+      "description": "Ordnet einer NFC-Karte ein Medium zu oder ändert die Zuordnung.",
+      "fields": {
+        "tag_id": {
+          "name": "Tag-ID",
+          "description": "ID der Karte, z. B. CA-09-0C-05 (siehe Sensor „Aktuelle Karte“)."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Anzeigename; leer = Titel des Mediums."
+        },
+        "media": {
+          "name": "Medium",
+          "description": "Album, Playlist, Favorit oder Radiosender."
+        },
+        "mode": {
+          "name": "Betriebsart",
+          "description": "Tonie: läuft nur, solange die Karte liegt, Stelle wird gemerkt. Einfach: Karte startet nur die Wiedergabe."
+        },
+        "enabled": {
+          "name": "Aktiv",
+          "description": "Deaktivierte Karten reagieren nicht."
+        },
+        "readers": {
+          "name": "Lesegeräte",
+          "description": "Nur an diesen Lesegeräten; leer = an allen."
+        }
+      }
+    },
+    "remove_card": {
+      "name": "Zuordnung entfernen",
+      "description": "Entfernt Medium und gemerkte Stelle einer Karte.",
+      "fields": {
+        "tag_id": {
+          "name": "Tag-ID",
+          "description": "ID der Karte."
+        }
+      }
+    },
+    "reset_position": {
+      "name": "Gemerkte Stelle zurücksetzen",
+      "description": "Beim nächsten Auflegen startet das Medium von vorne.",
+      "fields": {
+        "tag_id": {
+          "name": "Tag-ID",
+          "description": "ID der Karte."
+        }
+      }
+    },
+    "play_card": {
+      "name": "Karte testen",
+      "description": "Spielt das Medium einer Karte auf dem Lautsprecher eines Lesegeräts ab, ohne dass die Karte aufliegt.",
+      "fields": {
+        "tag_id": {
+          "name": "Tag-ID",
+          "description": "ID der Karte."
+        },
+        "reader": {
+          "name": "Lesegerät",
+          "description": "Leer = erstes passendes Lesegerät."
+        },
+        "resume": {
+          "name": "Fortsetzen",
+          "description": "An der gemerkten Stelle fortsetzen (wie beim Auflegen) statt von vorne."
+        }
+      }
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "tonie": "Tonie",
+        "simple": "Einfach"
+      }
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "Die NFC-Musikbox ist nicht eingerichtet."
+    },
+    "unknown_card": {
+      "message": "Keine Zuordnung für Karte {tag_id}."
+    },
+    "unknown_reader": {
+      "message": "Gerät {device} ist kein Lesegerät der NFC-Musikbox."
+    },
+    "no_reader": {
+      "message": "Kein passendes Lesegerät für diese Karte."
     }
   }
 }

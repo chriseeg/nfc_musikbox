@@ -4,6 +4,17 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.0]
+
+### Hinzugefügt
+- **Kindersicherung** pro Lesegerät: Hauptschalter, Maximallautstärke (solange eine Karte
+  aufliegt), Schlaf-Timer mit Ausblenden, Ruhezeit über eine Entität mit Ausnahme-Karten
+  („Auch in der Ruhezeit“). Panel-Abschnitt, Entitäten `switch`/`number`, WS
+  `reader/update` erweitert, `assign_card` kennt `allow_in_quiet`.
+- **Firmware v4** (`firmware/nfc-musikbox.yaml`): Status `locked` lässt beide LEDs dreimal
+  blinken. Behebt außerdem einen Konfigurationsfehler der v3 mit ESPHome 2026.9
+  (`effect` und `transition_length` in einem `light.turn_on`).
+
 ## [0.7.0]
 
 ### Hinzugefügt

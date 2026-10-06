@@ -53,6 +53,21 @@ Karten ohne Zuordnung, deaktivierte Karten und Karten, die für ein anderes Lese
 freigegeben sind, werden ignoriert. Zustandswechsel von/nach `unavailable`/`unknown`
 (Reconnect, HA-Start) lösen nichts aus.
 
+## Kindersicherung
+
+Pro Lesegerät unter *Musikkarten → Lesegeräte → Kindersicherung* (und als Entitäten am
+Lesegerät):
+
+| Baustein | Verhalten |
+|---|---|
+| **Kindersicherung aktiv** (`switch`) | Hauptschalter; aus = keine Grenzen, keine Ruhezeit |
+| **Maximallautstärke** (`number`, 0 = keine Grenze) | Solange eine Karte aufliegt, wird lauteres Drehen (App, Tasten am Lautsprecher) auf den Grenzwert zurückgeregelt. Die Startlautstärke wird darauf begrenzt. Ohne Karte (Eltern hören Musik) gilt keine Grenze. |
+| **Schlaf-Timer** (`number`, Minuten, 0 = aus) | Läuft ab dem Auflegen. Danach wird über ~15 s ausgeblendet und pausiert, die Stelle gemerkt, die alte Lautstärke wiederhergestellt. Play bleibt gesperrt, bis die Karte neu aufgelegt wird (das startet den Timer neu). |
+| **Ruhezeit** (Entität, z. B. `schedule.*` oder `input_boolean.*`) | Solange die Entität „an“ ist, funktionieren nur Karten mit **„Auch in der Ruhezeit“**. Beginnt die Ruhezeit während einer anderen Karte, wird die Stelle gemerkt und pausiert. Tasten können dann nur noch pausieren. |
+
+Bei gesperrter Karte blinken mit **Firmware v4** (`firmware/nfc-musikbox.yaml`) beide LEDs
+dreimal. Mit älterer Firmware passiert sichtbar einfach nichts.
+
 ## Tasten und LED
 
 Tasten wirken nur, solange eine Karte aufliegt.

@@ -4,6 +4,22 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0]
+
+### Geändert
+- Betriebsarten heißen jetzt **Hörspiel-Modus** (vorher „Tonie“) und **Musik-Modus**
+  (vorher „Einfach“). Intern bleiben die Werte `tonie`/`simple`: keine Datenmigration,
+  Automationen auf die Betriebsart-Entität funktionieren weiter.
+- Hörspiel-Modus schaltet die Zufallswiedergabe beim Start aus (Sonos merkt sich Shuffle
+  pro Lautsprecher; mit Shuffle stimmt die gemerkte Titelnummer nicht).
+
+### Hinzugefügt
+- Musik-Modus: pro Karte **Zufallswiedergabe** (an/aus/unverändert) und **Wiederholen**
+  (aus/alle/Titel/unverändert), gesetzt vor dem Start.
+- **Startlautstärke** pro Lesegerät (Panel → Lesegeräte, Entität `number` „Startlautstärke“):
+  wird beim Auflegen vor dem Abspielen gesetzt, 0 % = nicht ändern.
+- Websocket-Befehl `nfc_musikbox/reader/update`; `assign_card` kennt `shuffle`/`repeat`.
+
 ## [0.5.0]
 
 Erstes Release für HACS. Ersetzt die Blueprints „NFC-Musikbox – Karte“ und

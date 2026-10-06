@@ -29,6 +29,17 @@ assign_card:
         device:
           integration: nfc_musikbox
           multiple: true
+    shuffle:
+      selector:
+        boolean:
+    repeat:
+      selector:
+        select:
+          translation_key: repeat
+          options:
+            - "off"
+            - all
+            - one
 
 remove_card:
   fields:

@@ -82,9 +82,14 @@
       "mode": {
         "name": "Betriebsart",
         "state": {
-          "tonie": "Tonie",
-          "simple": "Einfach"
+          "tonie": "Hörspiel",
+          "simple": "Musik"
         }
+      }
+    },
+    "number": {
+      "start_volume": {
+        "name": "Startlautstärke"
       }
     }
   },
@@ -107,7 +112,7 @@
         },
         "mode": {
           "name": "Betriebsart",
-          "description": "Tonie: läuft nur, solange die Karte liegt, Stelle wird gemerkt. Einfach: Karte startet nur die Wiedergabe."
+          "description": "Hörspiel: läuft nur, solange die Karte liegt, Stelle wird gemerkt. Musik: Karte startet die Wiedergabe, mit eigenen Einstellungen für Zufall und Wiederholen."
         },
         "enabled": {
           "name": "Aktiv",
@@ -116,6 +121,14 @@
         "readers": {
           "name": "Lesegeräte",
           "description": "Nur an diesen Lesegeräten; leer = an allen."
+        },
+        "shuffle": {
+          "name": "Zufallswiedergabe",
+          "description": "Nur Musik-Modus. Leer lassen = Einstellung des Lautsprechers nicht ändern."
+        },
+        "repeat": {
+          "name": "Wiederholen",
+          "description": "Nur Musik-Modus. Leer lassen = Einstellung des Lautsprechers nicht ändern."
         }
       }
     },
@@ -161,8 +174,15 @@
   "selector": {
     "mode": {
       "options": {
-        "tonie": "Tonie",
-        "simple": "Einfach"
+        "tonie": "Hörspiel",
+        "simple": "Musik"
+      }
+    },
+    "repeat": {
+      "options": {
+        "off": "Aus",
+        "all": "Alle",
+        "one": "Titel"
       }
     }
   },

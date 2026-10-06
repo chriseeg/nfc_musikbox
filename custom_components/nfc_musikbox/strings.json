@@ -82,9 +82,14 @@
       "mode": {
         "name": "Mode",
         "state": {
-          "tonie": "Tonie",
-          "simple": "Simple"
+          "tonie": "Audiobook",
+          "simple": "Music"
         }
+      }
+    },
+    "number": {
+      "start_volume": {
+        "name": "Start volume"
       }
     }
   },
@@ -107,7 +112,7 @@
         },
         "mode": {
           "name": "Mode",
-          "description": "Tonie: plays only while the card is on the reader, position is remembered. Simple: card only starts playback."
+          "description": "Audiobook: plays only while the card is on the reader, position is remembered. Music: card starts playback, with its own shuffle and repeat settings."
         },
         "enabled": {
           "name": "Enabled",
@@ -116,6 +121,14 @@
         "readers": {
           "name": "Readers",
           "description": "Only on these readers; empty = all."
+        },
+        "shuffle": {
+          "name": "Shuffle",
+          "description": "Music mode only. Leave empty = do not change the speaker setting."
+        },
+        "repeat": {
+          "name": "Repeat",
+          "description": "Music mode only. Leave empty = do not change the speaker setting."
         }
       }
     },
@@ -161,8 +174,15 @@
   "selector": {
     "mode": {
       "options": {
-        "tonie": "Tonie",
-        "simple": "Simple"
+        "tonie": "Audiobook",
+        "simple": "Music"
+      }
+    },
+    "repeat": {
+      "options": {
+        "off": "Off",
+        "all": "All",
+        "one": "Track"
       }
     }
   },

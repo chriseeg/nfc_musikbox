@@ -16,8 +16,11 @@ from .const import STORAGE_KEY, STORAGE_VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
+# Intern "tonie"/"simple", angezeigt als Hörspiel-Modus/Musik-Modus
 type CardMode = Literal["tonie", "simple"]
 CARD_MODES: tuple[CardMode, ...] = ("tonie", "simple")
+type RepeatMode = Literal["off", "all", "one"]
+REPEAT_MODES: tuple[RepeatMode, ...] = ("off", "all", "one")
 TITLE_MAX_LEN = 60
 
 # Positionen ändern sich bei jedem Herausziehen; gebündelt speichern schont den eMMC.
@@ -30,6 +33,7 @@ class StoreEvent(StrEnum):
     CARD_ADDED = "card_added"
     CARD_UPDATED = "card_updated"
     CARD_REMOVED = "card_removed"
+    READER = "reader"
     POSITION = "position"
     SEEN = "seen"
 
@@ -43,6 +47,14 @@ class SeenTag:
 
     last: str
     reader: str | None = None
+
+
+@dataclass(slots=True)
+class ReaderSettings:
+    """Einstellungen pro Lesegerät, die ohne Reload änderbar sind."""
+
+    # Lautstärke in Prozent beim Auflegen einer Karte; 0 = nicht ändern
+    start_volume: int = 0
 
 
 @dataclass(slots=True)
@@ -72,10 +84,15 @@ class Card:
     enabled: bool = True
     # Subentry-IDs der Lesegeräte; leer = an allen Lesegeräten
     readers: list[str] = field(default_factory=list)
+    # Nur im Musik-Modus; None = Einstellung des Players nicht ändern
+    shuffle: bool | None = None
+    repeat: RepeatMode | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Card:
         mode = data.get("mode", "tonie")
+        shuffle = data.get("shuffle")
+        repeat = data.get("repeat")
         return cls(
             tag_id=data["tag_id"],
             name=data.get("name") or data["tag_id"],
@@ -83,6 +100,8 @@ class Card:
             mode=mode if mode in CARD_MODES else "tonie",
             enabled=bool(data.get("enabled", True)),
             readers=list(data.get("readers", [])),
+            shuffle=shuffle if isinstance(shuffle, bool) else None,
+            repeat=repeat if repeat in REPEAT_MODES else None,
         )
 
     def works_on(self, reader_id: str) -> bool:
@@ -97,6 +116,7 @@ class CardStore:
         self.cards: dict[str, Card] = {}
         self.positions: dict[str, Position] = {}
         self.seen: dict[str, SeenTag] = {}
+        self.reader_settings: dict[str, ReaderSettings] = {}
         self._dirty = False
         self._listeners: list[StoreListener] = []
 
@@ -120,6 +140,14 @@ class CardStore:
         for tag_id, raw in data.get("seen", {}).items():
             if isinstance(raw, dict) and isinstance(raw.get("last"), str):
                 self.seen[tag_id] = SeenTag(last=raw["last"], reader=raw.get("reader"))
+        self.reader_settings = {}
+        for reader_id, raw in data.get("reader_settings", {}).items():
+            if isinstance(raw, dict):
+                volume = raw.get("start_volume", 0)
+                volume = int(volume) if isinstance(volume, int | float) else 0
+                self.reader_settings[reader_id] = ReaderSettings(
+                    start_volume=min(100, max(0, volume))
+                )
         _LOGGER.debug(
             "Store geladen: %d Karten, %d Positionen", len(self.cards), len(self.positions)
         )
@@ -129,6 +157,7 @@ class CardStore:
             "cards": [asdict(card) for card in self.cards.values()],
             "positions": {tag: asdict(pos) for tag, pos in self.positions.items()},
             "seen": {tag: asdict(seen) for tag, seen in self.seen.items()},
+            "reader_settings": {r: asdict(rs) for r, rs in self.reader_settings.items()},
         }
 
     @callback
@@ -192,6 +221,16 @@ class CardStore:
             self.positions[tag_id] = position
         self._schedule_save()
         self._notify(StoreEvent.POSITION, tag_id)
+
+    def get_reader_settings(self, reader_id: str) -> ReaderSettings:
+        return self.reader_settings.get(reader_id) or ReaderSettings()
+
+    async def async_set_reader_settings(self, reader_id: str, *, start_volume: int) -> None:
+        self.reader_settings[reader_id] = ReaderSettings(
+            start_volume=min(100, max(0, start_volume))
+        )
+        await self.async_save()
+        self._notify(StoreEvent.READER, reader_id)
 
     def mark_seen(self, tag_id: str, reader: str | None) -> None:
         self.seen[tag_id] = SeenTag(last=dt_util.utcnow().isoformat(), reader=reader)

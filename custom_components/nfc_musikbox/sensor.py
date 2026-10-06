@@ -85,7 +85,7 @@ class ReaderCardSensor(SensorEntity):
 
 
 class CardPositionSensor(CardEntity, SensorEntity):
-    """Gemerkte Stelle einer Tonie-Karte, z. B. "Titel 2 · 1:10:10 · Kapitel 2"."""
+    """Gemerkte Stelle einer Hörspiel-Karte, z. B. "Titel 2 · 1:10:10 · Kapitel 2"."""
 
     _update_events = frozenset({StoreEvent.CARD_UPDATED, StoreEvent.POSITION})
 

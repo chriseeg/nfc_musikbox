@@ -34,7 +34,12 @@ from .websocket_api import async_register_websocket_api
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SELECT, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS: list[Platform] = [
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 PANEL_URL_PATH = "nfc-musikbox"
 PANEL_COMPONENT = "nfc-musikbox-panel"
@@ -102,6 +107,9 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
 def _async_handle_store_event(
     hass: HomeAssistant, entry: NfcMusikboxConfigEntry, event: StoreEvent, tag_id: str
 ) -> None:
+    if event is StoreEvent.READER:
+        async_dispatcher_send(hass, SIGNAL_UPDATED)
+        return
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get_device_by_identifier(
         card_device_identifier(tag_id), config_entry_id=entry.entry_id

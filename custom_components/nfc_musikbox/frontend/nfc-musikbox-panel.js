@@ -23,6 +23,8 @@
   const fmtPos = (sec) => { const t = Math.max(0, Math.round(sec)); const h = Math.floor(t / 3600); const m = Math.floor((t % 3600) / 60); const r = String(t % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${r}` : `${m}:${r}`; };
   const posMain = (p) => `${p.q ? `Titel ${p.q} · ` : ''}${fmtPos(p.p)}`;
   const PLAYER_STATE = { playing: 'spielt', paused: 'pausiert', idle: 'bereit', buffering: 'lädt', off: 'aus', on: 'an', standby: 'Standby', unavailable: 'nicht erreichbar', unknown: 'unbekannt' };
+  const volLabel = (v) => (Number(v) ? `${Number(v)} %` : 'unverändert');
+  const REPEAT_LABEL = { off: 'Wiederholen aus', all: 'Wiederholen', one: 'Titel wiederholen' };
   const ic = (n, cls = '') => `<ha-icon class="${cls}" icon="mdi:${n}"></ha-icon>`;
   const NO_TAG = new Set(['none', 'unknown', 'unavailable', '']);
 
@@ -109,6 +111,10 @@
   .sw{flex:none;width:46px;height:28px;border-radius:99px;background:var(--line);position:relative;transition:background .15s}
   .sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transition:transform .15s}
   .sw.on{background:var(--acc)}.sw.on::after{transform:translateX(18px)}
+  .seg.compact button{padding:10px 6px;text-align:center;font-size:13px}
+  .vol{display:flex;align-items:center;gap:10px;--mdc-icon-size:22px;color:var(--mute)}
+  .vol input{flex:1;accent-color:var(--acc);min-width:0}
+  .vol .vv{min-width:84px;text-align:right;font-size:14px;color:var(--primary-text-color)}
   .posbox{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:var(--bg2);--mdc-icon-size:22px}
   .posbox .t{flex:1;min-width:0}.posbox b{display:block}.posbox small{display:block;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .tests{display:flex;gap:8px;flex-wrap:wrap}
@@ -153,6 +159,7 @@
     _boot() {
       this.shadowRoot.addEventListener('click', (e) => this._click(e));
       this.shadowRoot.addEventListener('input', (e) => this._input(e));
+      this.shadowRoot.addEventListener('change', (e) => this._change(e));
       this.render();
       this._subscribe();
     }
@@ -309,7 +316,7 @@
         h += `<div class="tile ${c.enabled ? '' : 'off'}" data-a="edit" data-t="${esc(c.tag_id)}">
           ${this.art(m.metadata && m.metadata.thumbnail)}
           <div class="meta"><div class="title">${esc(c.name)}</div><div class="media">${esc(title)}</div>
-            <div class="chips">${lying ? `<span class="chip on">${ic('nfc-variant')}liegt auf</span>` : ''}${chips}<span class="chip">${ic('clock-outline')}${esc(ago(this._lastFor(c.tag_id)))}</span>${c.enabled ? '' : `<span class="chip">${ic('power-off')}deaktiviert</span>`}${c.mode === 'simple' ? `<span class="chip">${ic('play-circle-outline')}einfach</span>` : ''}</div>
+            <div class="chips">${lying ? `<span class="chip on">${ic('nfc-variant')}liegt auf</span>` : ''}${chips}<span class="chip">${ic('clock-outline')}${esc(ago(this._lastFor(c.tag_id)))}</span>${c.enabled ? '' : `<span class="chip">${ic('power-off')}deaktiviert</span>`}${c.mode === 'simple' ? `<span class="chip">${ic('music')}Musik${c.shuffle ? ' · Zufall' : ''}${c.repeat && c.repeat !== 'off' ? ` · ${REPEAT_LABEL[c.repeat]}` : ''}</span>` : ''}</div>
             ${pos ? `<div class="media" style="margin-top:6px">${ic('bookmark-outline')} ${esc(pos)}</div>` : ''}</div>
           <button class="play" data-a="test" data-t="${esc(c.tag_id)}" aria-label="Zum Testen von vorne abspielen">${ic('play')}</button></div>`;
       });
@@ -328,6 +335,9 @@
           <div class="chips"><span class="chip">${ic('speaker')}${esc(r.player_name)}${pl ? ` · ${esc(PLAYER_STATE[pl.state] || pl.state)}` : ''}</span>
             <span class="chip ${r.supports_restore ? 'on' : ''}">${ic(r.supports_restore ? 'bookmark-check-outline' : 'restart')}${r.supports_restore ? 'Fortsetzen an der Stelle' : 'nur von vorne'}</span>
             ${tag && !NO_TAG.has(tag) ? `<span class="chip on">${ic('cards-outline')}${esc(card ? card.name : tag)}</span>` : ''}</div>
+          <label class="f">Startlautstärke</label>
+          <div class="vol">${ic('volume-medium')}<input type="range" min="0" max="100" step="5" value="${Number(r.start_volume) || 0}" data-vol="${esc(r.id)}" aria-label="Startlautstärke">
+            <span class="vv" data-vv="${esc(r.id)}">${volLabel(r.start_volume)}</span></div>
           ${r.ready ? '' : `<p class="hint" style="color:var(--bad)">Sensor „Karte auf dem Reader“ fehlt. Läuft auf dem Lesegerät die Firmware v3?</p>`}</div>`;
       });
       h += `<div class="tests" style="margin-top:14px"><button class="btn primary" data-a="nav" data-u="${INTEGRATION_URL}">${ic('plus')}Lesegerät hinzufügen</button>
@@ -356,9 +366,14 @@
             <span class="media" style="display:block">${m ? 'Tippen zum Ändern' : 'Album, Playlist, Favorit, Radio …'}</span></span>${ic('chevron-right')}</button>
           <label class="f">Betriebsart</label>
           <div class="seg">
-            <button class="${sh.mode === 'tonie' ? 'on' : ''}" data-a="set-mode" data-m="tonie">Tonie<small>Läuft nur, solange die Karte liegt. Stelle wird gemerkt.</small></button>
-            <button class="${sh.mode === 'simple' ? 'on' : ''}" data-a="set-mode" data-m="simple">Einfach<small>Karte startet die Wiedergabe, sonst nichts.</small></button>
+            <button class="${sh.mode === 'tonie' ? 'on' : ''}" data-a="set-mode" data-m="tonie">Hörspiel<small>Läuft nur, solange die Karte liegt. Stelle wird gemerkt.</small></button>
+            <button class="${sh.mode === 'simple' ? 'on' : ''}" data-a="set-mode" data-m="simple">Musik<small>Karte startet die Wiedergabe, Abziehen tut nichts.</small></button>
           </div>
+          ${sh.mode === 'simple' ? `<label class="f">Zufallswiedergabe</label><div class="seg compact">
+            ${[[null, 'Unverändert'], [true, 'An'], [false, 'Aus']].map(([v, l]) => `<button class="${sh.shuffle === v ? 'on' : ''}" data-a="set-shuffle" data-v="${v}">${l}</button>`).join('')}</div>
+            <label class="f">Wiederholen</label><div class="seg compact">
+            ${[[null, 'Unverändert'], ['off', 'Aus'], ['all', 'Alle'], ['one', 'Titel']].map(([v, l]) => `<button class="${sh.repeat === v ? 'on' : ''}" data-a="set-repeat" data-v="${v}">${l}</button>`).join('')}</div>
+            <p class="hint">„Unverändert“ lässt die Einstellung des Lautsprechers, wie sie ist.</p>` : `<p class="hint">Zufallswiedergabe wird beim Start ausgeschaltet, damit die gemerkte Stelle stimmt.</p>`}
           ${sh.mode === 'tonie' && sh.edit ? `<label class="f">Gemerkte Stelle</label><div class="posbox">${ic('bookmark-outline')}
             <span class="t">${pos ? `<b>${esc(posMain(pos))}</b><small>${esc(pos.t || 'Titel unbekannt')}</small>` : '<b>Noch keine Stelle</b><small>Wird beim Abziehen der Karte gemerkt.</small>'}</span>
             ${pos ? '<button class="btn small" data-a="reset-pos">Zurücksetzen</button>' : ''}</div>` : ''}
@@ -414,7 +429,25 @@
     }
 
     /* ---------- Ereignisse ---------- */
+    async _change(e) {
+      const reader = e.target.dataset && e.target.dataset.vol;
+      if (!reader) return;
+      const value = Number(e.target.value);
+      const r = this.readers.find((x) => x.id === reader);
+      if (r) r.start_volume = value;
+      try {
+        await this.ws({ type: `${DOMAIN}/reader/update`, reader, start_volume: value });
+        this.toast(`Startlautstärke: ${volLabel(value)}`);
+      } catch (err) { this.toast(errMsg(err), true); }
+    }
+
     _input(e) {
+      const vr = e.target.dataset && e.target.dataset.vol;
+      if (vr) {
+        const lab = [...this.shadowRoot.querySelectorAll('[data-vv]')].find((x) => x.dataset.vv === vr);
+        if (lab) lab.textContent = volLabel(e.target.value);
+        return;
+      }
       const k = e.target.dataset && e.target.dataset.in;
       if (k === 'name' && this.S.sheet) this.S.sheet.name = e.target.value;
       if (k === 'filter' && this.S.picker) {
@@ -456,6 +489,8 @@
           case 'choose': this.chooseItem(Number(el.dataset.i)); break;
           case 'save': await this.save(); break;
           case 'set-mode': S.sheet.mode = el.dataset.m; this.render(); break;
+          case 'set-shuffle': S.sheet.shuffle = JSON.parse(el.dataset.v); this.render(); break;
+          case 'set-repeat': S.sheet.repeat = el.dataset.v === 'null' ? null : el.dataset.v; this.render(); break;
           case 'toggle-enabled': S.sheet.enabled = !S.sheet.enabled; this.render(); break;
           case 'reset-pos':
             await this.ws({ type: `${DOMAIN}/position/reset`, tag_id: S.sheet.tag_id });
@@ -485,6 +520,7 @@
       this.S.sheet = {
         edit: edit && !!card, tag_id: tagId, name: card ? card.name : (t && t.name !== tagId ? t.name : ''),
         media: card ? card.media : null, mode: card ? card.mode : 'tonie', enabled: card ? card.enabled : true,
+        shuffle: card && typeof card.shuffle === 'boolean' ? card.shuffle : null, repeat: card ? card.repeat || null : null,
         sel: new Set(sel), error: null, saving: false,
       };
       this.render();
@@ -551,7 +587,7 @@
       try {
         // Alle ausgewählt = an allen Lesegeräten, auch künftigen
         const readers = sel.length === ready.length ? [] : sel;
-        await this.ws({ type: `${DOMAIN}/card/save`, tag_id: sh.tag_id, name: sh.name, media: sh.media, mode: sh.mode, enabled: sh.enabled, readers });
+        await this.ws({ type: `${DOMAIN}/card/save`, tag_id: sh.tag_id, name: sh.name, media: sh.media, mode: sh.mode, enabled: sh.enabled, readers, shuffle: sh.shuffle, repeat: sh.repeat });
         await this._syncTagName(sh.tag_id, sh.name);
         this.S.sheet = null;
         this.render();

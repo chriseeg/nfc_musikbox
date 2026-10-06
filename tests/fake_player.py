@@ -10,6 +10,9 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
+# VOLUME_SET | SHUFFLE_SET | REPEAT_SET
+ALL_FEATURES = 4 | 32768 | 262144
+
 
 @dataclass
 class FakeSonos:
@@ -25,10 +28,12 @@ class FakeSonos:
     # Sekunden bis play_media tatsächlich "playing" meldet (None = nie)
     start_delay: float | None = 0.0
     ignore_seeks: int = 0
+    # supported_features; Standard 0, damit Ablauf-Tests nur den Kern sehen
+    features: int = 0
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
     def publish(self) -> None:
-        attrs: dict[str, Any] = {}
+        attrs: dict[str, Any] = {"supported_features": self.features}
         if self.q:
             attrs.update(
                 queue_position=self.q,
@@ -89,6 +94,12 @@ class FakeSonos:
                 return
             self.pos, self.updated_at = float(data["seek_position"]), dt_util.utcnow()
             self.publish()
+        elif name in (
+            "media_player.volume_set",
+            "media_player.shuffle_set",
+            "media_player.repeat_set",
+        ):
+            pass
         elif name == "sonos.play_queue":
             self.set_playing(int(data["queue_position"]) + 1, 0.0)
 
@@ -108,6 +119,9 @@ class FakeSonos:
             "media_play",
             "media_play_pause",
             "media_seek",
+            "volume_set",
+            "shuffle_set",
+            "repeat_set",
         ):
             self.hass.services.async_register("media_player", service, self._handle)
         self.hass.services.async_register("sonos", "play_queue", self._handle)

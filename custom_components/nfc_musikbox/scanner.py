@@ -7,6 +7,7 @@ from collections.abc import Coroutine
 import logging
 from typing import Any
 
+from homeassistant.components.media_player.const import MediaPlayerEntityFeature
 from homeassistant.const import STATE_PAUSED, STATE_PLAYING, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -191,6 +192,8 @@ class ReaderController:
             if resume and card.mode == "tonie":
                 await self._on_placed(card)
             elif card.media is not None:
+                await self._apply_start_volume()
+                await self._apply_play_mode(card)
                 await self.player.async_play_media(card.media)
         except HomeAssistantError as err:
             _LOGGER.error("%s: Test-Wiedergabe fehlgeschlagen: %s", self.name, err)
@@ -231,12 +234,45 @@ class ReaderController:
         if not still_playing and state is not None and state.state == STATE_PLAYING:
             await self.player.async_pause()
 
+    async def _apply_start_volume(self) -> None:
+        volume = self.store.get_reader_settings(self.reader.subentry_id).start_volume
+        if not volume:
+            return
+        player = self.player
+        if not player.supports(MediaPlayerEntityFeature.VOLUME_SET):
+            _LOGGER.debug("%s: Player kann keine Lautstärke setzen", self.name)
+            return
+        _LOGGER.debug("%s: Startlautstärke %d %%", self.name, volume)
+        try:
+            await player.async_set_volume(volume)
+        except HomeAssistantError as err:
+            _LOGGER.warning("%s: Startlautstärke nicht gesetzt: %s", self.name, err)
+
+    async def _apply_play_mode(self, card: Card) -> None:
+        """Shuffle/Repeat vor dem Start setzen.
+
+        Sonos merkt sich Shuffle pro Lautsprecher. Ein Hörspiel muss deshalb immer
+        ohne Shuffle starten, sonst stimmt die gemerkte Titelnummer nicht.
+        """
+        shuffle = False if card.mode == "tonie" else card.shuffle
+        repeat = None if card.mode == "tonie" else card.repeat
+        player = self.player
+        try:
+            if shuffle is not None and player.supports(MediaPlayerEntityFeature.SHUFFLE_SET):
+                await player.async_set_shuffle(shuffle)
+            if repeat is not None and player.supports(MediaPlayerEntityFeature.REPEAT_SET):
+                await player.async_set_repeat(repeat)
+        except HomeAssistantError as err:
+            _LOGGER.warning("%s: Shuffle/Wiederholen nicht gesetzt: %s", self.name, err)
+
     async def _on_placed(self, card: Card) -> None:
         if card.media is None:
             _LOGGER.info("%s: %s hat kein Medium", self.name, card.name)
             return
+        await self._apply_start_volume()
         if card.mode == "simple":
-            _LOGGER.info("%s: %s aufgelegt, starte Medium", self.name, card.name)
+            _LOGGER.info("%s: %s aufgelegt, starte Medium (Musik-Modus)", self.name, card.name)
+            await self._apply_play_mode(card)
             await self.player.async_play_media(card.media)
             return
 
@@ -264,6 +300,7 @@ class ReaderController:
         )
         self._restoring = card.tag_id
         try:
+            await self._apply_play_mode(card)
             await self.player.async_play_media(card.media)
             if memory is not None and (memory.q > 1 or memory.p > MIN_RESTORE_SECONDS):
                 await self.player.async_restore(memory)

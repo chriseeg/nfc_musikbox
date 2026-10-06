@@ -1,0 +1,35 @@
+name: Release
+
+# Tag "vX.Y.Z" pushen -> GitHub-Release mit den Notizen aus CHANGELOG.md.
+# HACS zeigt Releases als installierbare Versionen an.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version im Manifest prüfen
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(python3 -c "import json;print(json.load(open('custom_components/nfc_musikbox/manifest.json'))['version'])")
+          if [ "$tag" != "$manifest" ]; then
+            echo "Tag $tag passt nicht zur Manifest-Version $manifest" >&2
+            exit 1
+          fi
+      - name: Notizen aus CHANGELOG
+        run: |
+          awk -v v="${GITHUB_REF_NAME#v}" '
+            $0 ~ "^## \\[" v "\\]" {on=1; next}
+            on && /^## \[/ {exit}
+            on {print}
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || echo "Siehe CHANGELOG.md" > notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md

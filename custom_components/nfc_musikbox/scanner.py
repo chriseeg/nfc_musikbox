@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Coroutine
+from datetime import datetime, timedelta
 import logging
+import math
 from typing import Any
 
 from homeassistant.components.media_player.const import MediaPlayerEntityFeature
 from homeassistant.const import (
-    STATE_ON,
     STATE_PAUSED,
     STATE_PLAYING,
     STATE_UNAVAILABLE,
@@ -36,6 +37,8 @@ from .const import (
     OPT_REMOVAL_REWIND,
     OPT_SKIP_BACK,
 )
+from .limits import LimitReason, LimitTracker
+from .parents import ParentNotifier
 from .players import (
     MIN_RESTORE_SECONDS,
     PlayerBackend,
@@ -47,7 +50,7 @@ from .players import (
     snapshot_position,
 )
 from .reader import ReaderConfig
-from .store import TITLE_MAX_LEN, Card, CardStore, ReaderSettings, StoreEvent
+from .store import TITLE_MAX_LEN, Card, CardStore, ReaderSettings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,6 +61,9 @@ SLEEP_FADE_SECONDS = 15.0
 SLEEP_FADE_STEPS = 10
 # Toleranz, bevor die Maximallautstärke eingreift (Rundung der Player)
 VOLUME_TOLERANCE = 0.005
+
+# Gründe für eine gesperrte Karte außer den Tageslimits
+BLOCK_SLEEP = "sleep"
 
 
 class ReaderController:
@@ -73,21 +79,28 @@ class ReaderController:
         reader: ReaderConfig,
         store: CardStore,
         options: dict[str, Any],
+        *,
         on_locked: Callable[[], None] | None = None,
+        limits: LimitTracker | None = None,
+        notifier: ParentNotifier | None = None,
     ) -> None:
         self.hass = hass
         self.reader = reader
         self.store = store
         self.options = options
         self._on_locked = on_locked or (lambda: None)
+        self.limits = limits
+        self.notifier = notifier
         self._task: asyncio.Task[None] | None = None
         # Karte, deren Fortsetzen gerade läuft; ihre gemerkte Stelle ist dann noch gültig
         self._restoring: str | None = None
         self._unsub: list[Any] = []
         # Kindersicherung
-        self._blocked: str | None = None  # Karte, die wegen Ruhezeit/Schlaf-Timer gesperrt ist
+        # Karte, die wegen Tageslimit/Schlaf-Timer gesperrt ist, und der Grund
+        self._blocked: str | None = None
+        self._block_reason: str | None = None
         self._sleep_unsub: CALLBACK_TYPE | None = None
-        self._quiet_unsub: CALLBACK_TYPE | None = None
+        self._sleep_deadline: datetime | None = None
         self._restore_volume: float | None = None  # nach abgebrochenem Ausblenden
         self._fading = False
 
@@ -116,8 +129,8 @@ class ReaderController:
         ):
             if entity_id is not None:
                 self._unsub.append(async_track_state_change_event(self.hass, entity_id, handler))
-        self._unsub.append(self.store.async_add_listener(self._handle_store))
-        self._track_quiet()
+        if self.limits is not None:
+            self._unsub.append(self.limits.async_add_listener(self._update_live))
         _LOGGER.debug(
             "%s: höre auf %s, Player %s (%s)",
             self.name,
@@ -131,9 +144,10 @@ class ReaderController:
             unsub()
         self._unsub.clear()
         self._cancel_sleep_timer()
-        if self._quiet_unsub is not None:
-            self._quiet_unsub()
-            self._quiet_unsub = None
+        if self.limits is not None:
+            self.limits.stop_session(self.reader.subentry_id)
+        if self.notifier is not None:
+            self.notifier.live_end(self.reader)
         await self._cancel_running()
 
     @property
@@ -172,13 +186,14 @@ class ReaderController:
             self.store.mark_seen(placed, self.reader.subentry_id)
         self._cancel_sleep_timer()
         blocked_removed = removed is not None and removed == self._blocked
-        self._blocked = None
+        self._set_blocked(None)
         interrupted_restore = self._restoring
         previous = self._task
         self._task = self.hass.async_create_background_task(
             self._run(removed, placed, previous, interrupted_restore, blocked_removed),
             f"nfc_musikbox {self.name}",
         )
+        self._sync_session()
 
     async def _run(
         self,
@@ -204,19 +219,17 @@ class ReaderController:
             placed_card = self._active_card(placed)
             if placed is not None and placed_card is None:
                 _LOGGER.debug("%s: Karte %s ist nicht zugeordnet oder inaktiv", self.name, placed)
-            if placed_card is not None and self._quiet_blocks(placed_card):
-                _LOGGER.info("%s: %s in der Ruhezeit gesperrt", self.name, placed_card.name)
-                self._blocked = placed_card.tag_id
-                self._on_locked()
+            reason = self._limit_reason(placed_card) if placed_card is not None else None
+            if placed_card is not None and reason is not None:
+                self._block_for_limit(placed_card, reason)
                 if removed_card is not None:
-                    # Kartenwechsel in der Ruhezeit: die alte Karte nicht weiterlaufen lassen
+                    # Kartenwechsel über dem Limit: die alte Karte nicht weiterlaufen lassen
                     await self._pause_if_playing()
                 return
             if placed_card is not None:
                 if removed is not None:
                     await asyncio.sleep(float(self.options[OPT_CARD_CHANGE_DELAY]))
-                await self._on_placed(placed_card)
-                self._start_sleep_timer(placed_card)
+                await self._start_card(placed_card)
         except HomeAssistantError as err:
             _LOGGER.error("%s: Fehler bei %s -> %s: %s", self.name, removed, placed, err)
 
@@ -377,15 +390,36 @@ class ReaderController:
 
     # ---------- Kindersicherung ----------
 
-    def _in_quiet(self) -> bool:
-        settings = self.settings
-        if not settings.parental or not settings.quiet_entity:
-            return False
-        state = self.hass.states.get(settings.quiet_entity)
-        return state is not None and state.state == STATE_ON
+    @property
+    def _parental(self) -> bool:
+        return self.settings.parental
 
-    def _quiet_blocks(self, card: Card) -> bool:
-        return self._in_quiet() and not card.allow_in_quiet
+    def _limit_reason(self, card: Card) -> LimitReason | None:
+        if self.limits is None or not self._parental:
+            return None
+        return self.limits.check(card)
+
+    @callback
+    def _set_blocked(self, card: Card | None, reason: str | None = None) -> None:
+        self._blocked = card.tag_id if card is not None else None
+        self._block_reason = reason if card is not None else None
+
+    @callback
+    def _block_for_limit(self, card: Card, reason: LimitReason) -> None:
+        _LOGGER.info("%s: %s gesperrt, Tageslimit (%s)", self.name, card.name, reason)
+        self._set_blocked(card, reason)
+        self._on_locked()
+        self._sync_session()
+        self._update_live()
+        if self.notifier is not None:
+            self.notifier.request(self.reader, card, reason)
+
+    async def _start_card(self, card: Card) -> None:
+        """Karte starten und bei den Tageslimits anrechnen."""
+        if self.limits is not None and self._parental:
+            self.limits.register_start(card)
+        await self._on_placed(card)
+        self._start_sleep_timer(card)
 
     def _card_on_reader(self) -> Card | None:
         state = self.hass.states.get(self.reader.card_sensor or "")
@@ -397,34 +431,62 @@ class ReaderController:
             await self.player.async_pause()
 
     @callback
-    def _handle_store(self, event: StoreEvent, key: str) -> None:
-        if event is StoreEvent.READER and key == self.reader.subentry_id:
-            self._track_quiet()
-
-    @callback
-    def _track_quiet(self) -> None:
-        if self._quiet_unsub is not None:
-            self._quiet_unsub()
-            self._quiet_unsub = None
-        entity_id = self.settings.quiet_entity
-        if entity_id:
-            self._quiet_unsub = async_track_state_change_event(
-                self.hass, entity_id, self._handle_quiet
-            )
-
-    @callback
-    def _handle_quiet(self, event: Event[EventStateChangedData]) -> None:
-        new_state = event.data["new_state"]
-        old_state = event.data["old_state"]
-        if new_state is None or new_state.state != STATE_ON:
-            return
-        if old_state is not None and old_state.state == STATE_ON:
+    def _sync_session(self) -> None:
+        """Hörzeit zählt, solange eine Karte mit Limit aufliegt und der Player spielt."""
+        if self.limits is None:
             return
         card = self._card_on_reader()
-        if card is None or not self._quiet_blocks(card):
+        state = self.player.state
+        listening = (
+            self._parental
+            and card is not None
+            and card.limited
+            and card.tag_id != self._blocked
+            and state is not None
+            and state.state == STATE_PLAYING
+        )
+        if listening:
+            self.limits.start_session(self.reader.subentry_id, self._time_up)
+        else:
+            self.limits.stop_session(self.reader.subentry_id)
+
+    @callback
+    def _time_up(self) -> None:
+        card = self._card_on_reader()
+        if card is None or not card.limited or card.tag_id == self._blocked:
+            self._sync_session()
             return
-        _LOGGER.info("%s: Ruhezeit beginnt, %s wird pausiert", self.name, card.name)
-        self._run_exclusive(self._stop_for_parental(card), "Ruhezeit")
+        _LOGGER.info("%s: Hörzeit aufgebraucht, blende %s aus", self.name, card.name)
+        self._set_blocked(card, LimitReason.TIME)
+        self._run_exclusive(self._fade_and_stop(card, LimitReason.TIME), "Hörzeit")
+        if self.notifier is not None:
+            self.notifier.request(self.reader, card, LimitReason.TIME, stopped=True)
+
+    @callback
+    def grant(self, minutes: int) -> None:
+        """Freigabe der Eltern (Mitteilung): verlängern und eine gesperrte Karte starten."""
+        if self.limits is None:
+            return
+        card = self._card_on_reader()
+        waiting = (
+            card
+            if card is not None
+            and card.tag_id == self._blocked
+            and self._block_reason in tuple(LimitReason)
+            else None
+        )
+        self.limits.grant(minutes, waiting)
+        if waiting is not None:
+            self._resume_if_allowed(waiting)
+
+    @callback
+    def _resume_if_allowed(self, card: Card) -> bool:
+        if self._limit_reason(card) is not None:
+            return False
+        _LOGGER.info("%s: %s freigegeben, starte", self.name, card.name)
+        self._set_blocked(None)
+        self._run_exclusive(self._start_card(card), "Freigabe")
+        return True
 
     @callback
     def _run_exclusive(self, action: Coroutine[Any, Any, None], label: str) -> None:
@@ -444,10 +506,10 @@ class ReaderController:
             _wrapped(), f"nfc_musikbox {self.name} {label}"
         )
 
-    async def _stop_for_parental(self, card: Card) -> None:
+    async def _stop_for_parental(self, card: Card, reason: str) -> None:
         """Stelle merken (Hörspiel) und pausieren, wie beim Abziehen; Karte sperren."""
         self._cancel_sleep_timer()
-        self._blocked = card.tag_id
+        self._set_blocked(card, reason)
         if card.mode == "tonie":
             position = snapshot_position(self.player.state)
             if position is not None:
@@ -465,28 +527,34 @@ class ReaderController:
         @callback
         def _expired(_now: Any) -> None:
             self._sleep_unsub = None
+            self._sleep_deadline = None
             if self._card_on_reader() is None:
                 return
             _LOGGER.info("%s: Schlaf-Timer abgelaufen, blende %s aus", self.name, card.name)
-            self._run_exclusive(self._sleep_fade(card), "Schlaf-Timer")
+            self._run_exclusive(self._fade_and_stop(card, BLOCK_SLEEP), "Schlaf-Timer")
 
         self._sleep_unsub = async_call_later(self.hass, minutes * 60, _expired)
+        self._sleep_deadline = dt_util.utcnow() + timedelta(minutes=minutes)
+        self._update_live()
 
     @callback
     def _cancel_sleep_timer(self) -> None:
+        self._sleep_deadline = None
         if self._sleep_unsub is not None:
             self._sleep_unsub()
             self._sleep_unsub = None
 
-    async def _sleep_fade(self, card: Card) -> None:
+    async def _fade_and_stop(self, card: Card, reason: str) -> None:
+        """Ausblenden, dann wie Abziehen stoppen und die Karte sperren."""
         player = self.player
         state = player.state
         if state is None or state.state != STATE_PLAYING:
-            self._blocked = card.tag_id
+            self._set_blocked(card, reason)
+            self._sync_session()
             return
         original = _volume_level(state)
         if original is None or not player.supports(MediaPlayerEntityFeature.VOLUME_SET):
-            await self._stop_for_parental(card)
+            await self._stop_for_parental(card, reason)
             return
         # Wird das Ausblenden abgebrochen (Karte abgezogen), beim nächsten Start zurück
         self._restore_volume = original
@@ -498,12 +566,20 @@ class ReaderController:
                 await player.async_set_volume(level)
         finally:
             self._fading = False
-        await self._stop_for_parental(card)
+        await self._stop_for_parental(card, reason)
         await player.async_set_volume(round(original * 100))
         self._restore_volume = None
 
     @callback
     def _handle_player(self, event: Event[EventStateChangedData]) -> None:
+        self._sync_session()
+        old, new = event.data["old_state"], event.data["new_state"]
+        if _live_relevant(old) != _live_relevant(new):
+            self._update_live()
+        self._enforce_max_volume(event)
+
+    @callback
+    def _enforce_max_volume(self, event: Event[EventStateChangedData]) -> None:
         """Maximallautstärke durchsetzen, solange eine Karte aufliegt."""
         settings = self.settings
         if not settings.parental or not settings.max_volume or self.hass.is_stopping:
@@ -531,6 +607,70 @@ class ReaderController:
             await self.player.async_set_volume(percent)
         except HomeAssistantError as err:
             _LOGGER.warning("%s: Maximallautstärke nicht gesetzt: %s", self.name, err)
+
+    # ---------- Live-Aktivität ----------
+
+    @callback
+    def _update_live(self) -> None:
+        """Live-Aktivität für die Eltern: läuft, solange eine Karte mit Limit spielt."""
+        notifier = self.notifier
+        if notifier is None:
+            return
+        card = self._card_on_reader()
+        state = self.player.state
+        if (
+            not self.store.parental.live_activity
+            or not self._parental
+            or card is None
+            or not card.limited
+            or card.tag_id == self._blocked
+            or state is None
+            or state.state not in (STATE_PLAYING, STATE_PAUSED)
+        ):
+            notifier.live_end(self.reader)
+            return
+        message, data = self._live_content(state)
+        notifier.live_update(self.reader, card.name, message, data)
+
+    def _stop_window(self) -> tuple[datetime, float] | None:
+        """Zeitpunkt, an dem die Wiedergabe endet (Hörzeit/Schlaf-Timer), und Gesamtdauer."""
+        windows: list[tuple[datetime, float]] = []
+        now = dt_util.utcnow()
+        if self.limits is not None:
+            remaining = self.limits.remaining_seconds()
+            allowed = self.limits.allowed_seconds
+            if remaining is not None and allowed:
+                windows.append((now + timedelta(seconds=remaining), allowed))
+        if self._sleep_deadline is not None:
+            windows.append((self._sleep_deadline, self.settings.sleep_timer * 60.0))
+        return min(windows, key=lambda w: w[0]) if windows else None
+
+    def _live_content(self, state: State) -> tuple[str, dict[str, Any]]:
+        playing = state.state == STATE_PLAYING
+        q = queue_position(state)
+        size = state.attributes.get("queue_size")
+        if q and isinstance(size, int) and size > 1:
+            chapter = f"Kapitel {q} von {size}"
+        else:
+            chapter = f"Kapitel {q}" if q > 1 else ""
+        parts = [None if playing else "Pausiert", chapter, media_title(state)]
+        message = " · ".join(p for p in parts if p) or "Läuft"
+        data: dict[str, Any] = {}
+        window = self._stop_window()
+        if window is not None:
+            end, total = window
+            remaining = max(0.0, (end - dt_util.utcnow()).total_seconds())
+            data = {
+                "progress": round(remaining),
+                "progress_max": max(1, round(total)),
+                "progress_bar_direction": "decreasing",
+                "critical_text": f"noch {math.ceil(remaining / 60)} min",
+            }
+            if playing:
+                data |= {"chronometer": True, "when": round(end.timestamp())}
+        elif q and isinstance(size, int) and size > 1:
+            data = {"progress": q, "progress_max": size}
+        return message, data
 
     # ---------- Tasten ----------
 
@@ -595,17 +735,25 @@ class ReaderController:
     def _button_blocked(self) -> bool:
         """Gesperrte Karte: Tasten dürfen nur noch pausieren."""
         card = self._card_on_reader()
-        if card is None:
-            return False
-        return card.tag_id == self._blocked or self._quiet_blocks(card)
+        return card is not None and card.tag_id == self._blocked
 
     async def _on_play_button(self) -> None:
         if self._button_blocked():
             state = self.player.state
             if state is not None and state.state == STATE_PLAYING:
                 await self.player.async_pause()
-            else:
+                return
+            card = self._card_on_reader()
+            reason = self._block_reason
+            if card is not None and reason in tuple(LimitReason):
+                # Limits inzwischen zurückgesetzt/verlängert: Play startet die Karte
+                if self._resume_if_allowed(card):
+                    return
                 self._on_locked()
+                if self.notifier is not None:
+                    self.notifier.request(self.reader, card, LimitReason(reason))
+                return
+            self._on_locked()
             return
         await self.player.async_play_pause()
 
@@ -624,6 +772,18 @@ class ReaderController:
             self._on_locked()
             return
         await self.player.async_restart()
+
+
+def _live_relevant(state: State | None) -> tuple[Any, ...]:
+    """Was die Live-Aktivität zeigt; Positions-Updates allein lösen kein Update aus."""
+    if state is None:
+        return ()
+    return (
+        state.state,
+        state.attributes.get("queue_position"),
+        state.attributes.get("queue_size"),
+        state.attributes.get("media_title"),
+    )
 
 
 def _volume_level(state: State | None) -> float | None:

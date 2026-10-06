@@ -24,8 +24,11 @@ from .const import (
     SIGNAL_UPDATED,
     SUBENTRY_READER,
     card_device_identifier,
+    hub_device_identifier,
 )
 from .led import LedSync
+from .limits import LimitTracker
+from .parents import ParentNotifier
 from .reader import ReaderConfig, resolve_reader
 from .scanner import ReaderController
 from .services import async_setup_services
@@ -36,6 +39,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
@@ -56,6 +60,8 @@ class NfcMusikboxData:
 
     store: CardStore
     options: dict[str, Any]
+    limits: LimitTracker
+    notifier: ParentNotifier
     readers: dict[str, ReaderConfig] = field(default_factory=dict)
     controllers: dict[str, ReaderController] = field(default_factory=dict)
     leds: dict[str, LedSync] = field(default_factory=dict)
@@ -108,7 +114,7 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
 def _async_handle_store_event(
     hass: HomeAssistant, entry: NfcMusikboxConfigEntry, event: StoreEvent, tag_id: str
 ) -> None:
-    if event is StoreEvent.READER:
+    if event in (StoreEvent.READER, StoreEvent.PARENTAL, StoreEvent.USAGE):
         async_dispatcher_send(hass, SIGNAL_UPDATED)
         return
     dev_reg = dr.async_get(hass)
@@ -131,7 +137,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) 
     store = CardStore(hass)
     await store.async_load()
 
-    data = NfcMusikboxData(store=store, options={**DEFAULT_OPTIONS, **entry.options})
+    limits = LimitTracker(hass, store)
+    readers: dict[str, ReaderConfig] = {}
+    data = NfcMusikboxData(
+        store=store,
+        options={**DEFAULT_OPTIONS, **entry.options},
+        limits=limits,
+        notifier=ParentNotifier(hass, store, limits, readers),
+        readers=readers,
+    )
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={hub_device_identifier(entry.entry_id)},
+        name="NFC-Musikbox",
+        manufacturer="NFC-Musikbox",
+        model="Kindersicherung",
+    )
     for subentry in entry.subentries.values():
         if subentry.subentry_type != SUBENTRY_READER:
             continue
@@ -141,14 +162,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) 
     entry.runtime_data = data
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    limits.async_start()
+    entry.async_on_unload(
+        limits.async_add_listener(lambda: async_dispatcher_send(hass, SIGNAL_UPDATED))
+    )
 
     for reader in data.readers.values():
         led = LedSync(hass, reader)
         led.async_start()
         data.leds[reader.subentry_id] = led
-        controller = ReaderController(hass, reader, store, data.options, on_locked=led.flash_locked)
+        controller = ReaderController(
+            hass,
+            reader,
+            store,
+            data.options,
+            on_locked=led.flash_locked,
+            limits=limits,
+            notifier=data.notifier,
+        )
         controller.async_start()
         data.controllers[reader.subentry_id] = controller
+
+    @callback
+    def _grant(reader_id: str, minutes: int) -> None:
+        if (controller := data.controllers.get(reader_id)) is not None:
+            controller.grant(minutes)
+
+    data.notifier.async_start(_grant)
     entry.async_on_unload(
         store.async_add_listener(
             lambda event, tag_id: _async_handle_store_event(hass, entry, event, tag_id)
@@ -172,6 +212,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry)
         led.async_stop()
     for controller in entry.runtime_data.controllers.values():
         await controller.async_stop()
+    entry.runtime_data.notifier.async_stop()
+    entry.runtime_data.limits.async_stop()
     await entry.runtime_data.store.async_flush()
     frontend.async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

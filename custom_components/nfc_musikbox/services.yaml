@@ -40,7 +40,7 @@ assign_card:
             - "off"
             - all
             - one
-    allow_in_quiet:
+    limited:
       default: false
       selector:
         boolean:
@@ -76,3 +76,24 @@ play_card:
       default: false
       selector:
         boolean:
+
+reset_limits:
+
+extend_limits:
+  fields:
+    count:
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 20
+          mode: box
+    minutes:
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 600
+          step: 5
+          unit_of_measurement: min
+          mode: box

@@ -34,6 +34,8 @@ class StoreEvent(StrEnum):
     CARD_UPDATED = "card_updated"
     CARD_REMOVED = "card_removed"
     READER = "reader"
+    PARENTAL = "parental"  # Einstellungen der Kindersicherung
+    USAGE = "usage"  # Tagesverbrauch
     POSITION = "position"
     SEEN = "seen"
 
@@ -59,7 +61,6 @@ class ReaderSettings:
     parental: bool = True
     max_volume: int = 0
     sleep_timer: int = 0  # Minuten
-    quiet_entity: str | None = None  # Ruhezeit, solange diese Entität "on" ist
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> ReaderSettings:
@@ -68,13 +69,67 @@ class ReaderSettings:
             return min(100, max(0, int(value))) if isinstance(value, int | float) else 0
 
         sleep = raw.get("sleep_timer", 0)
-        quiet = raw.get("quiet_entity")
         return cls(
             start_volume=percent("start_volume"),
             parental=bool(raw.get("parental", True)),
             max_volume=percent("max_volume"),
             sleep_timer=min(240, max(0, int(sleep))) if isinstance(sleep, int | float) else 0,
-            quiet_entity=quiet if isinstance(quiet, str) and quiet else None,
+        )
+
+
+def _clamped_int(value: Any, maximum: int) -> int:
+    return min(maximum, max(0, int(value))) if isinstance(value, int | float) else 0
+
+
+@dataclass(slots=True)
+class ParentalSettings:
+    """Globale Kindersicherung: Tageslimits und Mitteilungen an die Eltern."""
+
+    # 0 = kein Limit
+    daily_count: int = 0  # verschiedene Hörspiele pro Tag
+    daily_minutes: int = 0  # Hörzeit pro Tag
+    # Notify-Dienste ohne Domain, z. B. "mobile_app_iphone_von_christian"
+    notify: list[str] = field(default_factory=list)
+    live_activity: bool = False
+
+    @property
+    def has_limits(self) -> bool:
+        return bool(self.daily_count or self.daily_minutes)
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> ParentalSettings:
+        notify = raw.get("notify")
+        return cls(
+            daily_count=_clamped_int(raw.get("daily_count"), 50),
+            daily_minutes=_clamped_int(raw.get("daily_minutes"), 1440),
+            notify=[n for n in notify if isinstance(n, str) and n]
+            if isinstance(notify, list)
+            else [],
+            live_activity=bool(raw.get("live_activity", False)),
+        )
+
+
+@dataclass(slots=True)
+class DailyUsage:
+    """Verbrauch des Tages (lokales Datum), über alle Lesegeräte gezählt."""
+
+    day: str = ""
+    cards: list[str] = field(default_factory=list)  # heute gestartete Karten
+    seconds: float = 0.0  # gehörte Zeit (Player spielt, Karte mit Limit liegt auf)
+    # Von den Eltern freigegeben, zusätzlich zu den Limits
+    extra_count: int = 0
+    extra_minutes: int = 0
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> DailyUsage:
+        cards = raw.get("cards")
+        seconds = raw.get("seconds")
+        return cls(
+            day=str(raw.get("day", "")),
+            cards=[c for c in cards if isinstance(c, str)] if isinstance(cards, list) else [],
+            seconds=float(seconds) if isinstance(seconds, int | float) else 0.0,
+            extra_count=_clamped_int(raw.get("extra_count"), 1000),
+            extra_minutes=_clamped_int(raw.get("extra_minutes"), 100000),
         )
 
 
@@ -108,8 +163,8 @@ class Card:
     # Nur im Musik-Modus; None = Einstellung des Players nicht ändern
     shuffle: bool | None = None
     repeat: RepeatMode | None = None
-    # Kindersicherung: Karte darf auch während der Ruhezeit spielen (z. B. Einschlafmusik)
-    allow_in_quiet: bool = False
+    # Kindersicherung: Karte zählt zum Tageslimit (Anzahl und Hörzeit)
+    limited: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Card:
@@ -125,7 +180,7 @@ class Card:
             readers=list(data.get("readers", [])),
             shuffle=shuffle if isinstance(shuffle, bool) else None,
             repeat=repeat if repeat in REPEAT_MODES else None,
-            allow_in_quiet=bool(data.get("allow_in_quiet", False)),
+            limited=bool(data.get("limited", False)),
         )
 
     def works_on(self, reader_id: str) -> bool:
@@ -141,6 +196,8 @@ class CardStore:
         self.positions: dict[str, Position] = {}
         self.seen: dict[str, SeenTag] = {}
         self.reader_settings: dict[str, ReaderSettings] = {}
+        self.parental = ParentalSettings()
+        self.usage = DailyUsage()
         self._dirty = False
         self._listeners: list[StoreListener] = []
 
@@ -168,6 +225,12 @@ class CardStore:
         for reader_id, raw in data.get("reader_settings", {}).items():
             if isinstance(raw, dict):
                 self.reader_settings[reader_id] = ReaderSettings.from_dict(raw)
+        raw_parental = data.get("parental")
+        self.parental = ParentalSettings.from_dict(
+            raw_parental if isinstance(raw_parental, dict) else {}
+        )
+        raw_usage = data.get("usage")
+        self.usage = DailyUsage.from_dict(raw_usage if isinstance(raw_usage, dict) else {})
         _LOGGER.debug(
             "Store geladen: %d Karten, %d Positionen", len(self.cards), len(self.positions)
         )
@@ -178,6 +241,8 @@ class CardStore:
             "positions": {tag: asdict(pos) for tag, pos in self.positions.items()},
             "seen": {tag: asdict(seen) for tag, seen in self.seen.items()},
             "reader_settings": {r: asdict(rs) for r, rs in self.reader_settings.items()},
+            "parental": asdict(self.parental),
+            "usage": asdict(self.usage),
         }
 
     @callback
@@ -250,6 +315,17 @@ class CardStore:
         self.reader_settings[reader_id] = ReaderSettings.from_dict({**current, **changes})
         await self.async_save()
         self._notify(StoreEvent.READER, reader_id)
+
+    async def async_set_parental(self, **changes: Any) -> None:
+        self.parental = ParentalSettings.from_dict({**asdict(self.parental), **changes})
+        await self.async_save()
+        self._notify(StoreEvent.PARENTAL, "")
+
+    def set_usage(self, usage: DailyUsage) -> None:
+        """Verbrauch ersetzen; gespeichert wird gebündelt (ändert sich oft)."""
+        self.usage = usage
+        self._schedule_save()
+        self._notify(StoreEvent.USAGE, "")
 
     def mark_seen(self, tag_id: str, reader: str | None) -> None:
         self.seen[tag_id] = SeenTag(last=dt_util.utcnow().isoformat(), reader=reader)

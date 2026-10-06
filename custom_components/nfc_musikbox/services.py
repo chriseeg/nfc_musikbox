@@ -1,4 +1,4 @@
-"""Dienste: Karten zuordnen, entfernen, gemerkte Stelle zurücksetzen."""
+"""Dienste: Karten zuordnen, entfernen, gemerkte Stelle zurücksetzen, Tageslimits."""
 
 from __future__ import annotations
 
@@ -22,6 +22,10 @@ SERVICE_ASSIGN_CARD = "assign_card"
 SERVICE_REMOVE_CARD = "remove_card"
 SERVICE_RESET_POSITION = "reset_position"
 SERVICE_PLAY_CARD = "play_card"
+SERVICE_RESET_LIMITS = "reset_limits"
+SERVICE_EXTEND_LIMITS = "extend_limits"
+ATTR_COUNT = "count"
+ATTR_MINUTES = "minutes"
 ATTR_READER = "reader"
 ATTR_RESUME = "resume"
 
@@ -33,7 +37,7 @@ ATTR_ENABLED = "enabled"
 ATTR_READERS = "readers"
 ATTR_SHUFFLE = "shuffle"
 ATTR_REPEAT = "repeat"
-ATTR_ALLOW_IN_QUIET = "allow_in_quiet"
+ATTR_LIMITED = "limited"
 
 # Wie der Media-Selector, aber "metadata" (Titel, Cover) bleibt für die Oberfläche erhalten
 MEDIA_SCHEMA = vol.Schema(
@@ -55,7 +59,13 @@ ASSIGN_SCHEMA = vol.Schema(
         vol.Optional(ATTR_READERS, default=list): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional(ATTR_SHUFFLE): cv.boolean,
         vol.Optional(ATTR_REPEAT): vol.In(REPEAT_MODES),
-        vol.Optional(ATTR_ALLOW_IN_QUIET, default=False): cv.boolean,
+        vol.Optional(ATTR_LIMITED, default=False): cv.boolean,
+    }
+)
+EXTEND_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_COUNT, default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=20)),
+        vol.Optional(ATTR_MINUTES, default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=600)),
     }
 )
 TAG_SCHEMA = vol.Schema({vol.Required(ATTR_TAG_ID): cv.string})
@@ -140,7 +150,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
             readers=_reader_subentries(hass, call.data[ATTR_READERS]),
             shuffle=call.data.get(ATTR_SHUFFLE),
             repeat=call.data.get(ATTR_REPEAT),
-            allow_in_quiet=call.data[ATTR_ALLOW_IN_QUIET],
+            limited=call.data[ATTR_LIMITED],
         )
         await store.async_set_card(card)
         _LOGGER.info("Karte %s (%s) zugeordnet: %s", card.name, tag_id, media)
@@ -167,6 +177,14 @@ def async_setup_services(hass: HomeAssistant) -> None:
             hass, _normalize_tag(call.data[ATTR_TAG_ID]), reader_id, call.data[ATTR_RESUME]
         )
 
+    async def reset_limits(call: ServiceCall) -> None:
+        loaded_data(hass).limits.reset()
+
+    async def extend_limits(call: ServiceCall) -> None:
+        loaded_data(hass).limits.extend(call.data[ATTR_COUNT], call.data[ATTR_MINUTES])
+
+    hass.services.async_register(DOMAIN, SERVICE_RESET_LIMITS, reset_limits)
+    hass.services.async_register(DOMAIN, SERVICE_EXTEND_LIMITS, extend_limits, EXTEND_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_PLAY_CARD, play_card, PLAY_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_ASSIGN_CARD, assign_card, ASSIGN_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_REMOVE_CARD, remove_card, TAG_SCHEMA)

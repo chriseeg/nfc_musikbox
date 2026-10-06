@@ -6,6 +6,12 @@
       },
       "position": {
         "default": "mdi:bookmark-music-outline"
+      },
+      "count_today": {
+        "default": "mdi:counter"
+      },
+      "time_today": {
+        "default": "mdi:timer-outline"
       }
     },
     "switch": {
@@ -45,6 +51,11 @@
           "off": "mdi:lan-disconnect"
         }
       }
+    },
+    "button": {
+      "reset_limits": {
+        "default": "mdi:restore"
+      }
     }
   },
   "services": {
@@ -59,6 +70,12 @@
     },
     "play_card": {
       "service": "mdi:play"
+    },
+    "reset_limits": {
+      "service": "mdi:restore"
+    },
+    "extend_limits": {
+      "service": "mdi:timer-plus-outline"
     }
   }
 }

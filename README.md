@@ -60,10 +60,47 @@ Lesegerät):
 
 | Baustein | Verhalten |
 |---|---|
-| **Kindersicherung aktiv** (`switch`) | Hauptschalter; aus = keine Grenzen, keine Ruhezeit |
+| **Kindersicherung aktiv** (`switch`) | Hauptschalter; aus = keine Grenzen, kein Tageslimit (es wird auch nichts gezählt) |
 | **Maximallautstärke** (`number`, 0 = keine Grenze) | Solange eine Karte aufliegt, wird lauteres Drehen (App, Tasten am Lautsprecher) auf den Grenzwert zurückgeregelt. Die Startlautstärke wird darauf begrenzt. Ohne Karte (Eltern hören Musik) gilt keine Grenze. |
 | **Schlaf-Timer** (`number`, Minuten, 0 = aus) | Läuft ab dem Auflegen. Danach wird über ~15 s ausgeblendet und pausiert, die Stelle gemerkt, die alte Lautstärke wiederhergestellt. Play bleibt gesperrt, bis die Karte neu aufgelegt wird (das startet den Timer neu). |
-| **Ruhezeit** (Entität, z. B. `schedule.*` oder `input_boolean.*`) | Solange die Entität „an“ ist, funktionieren nur Karten mit **„Auch in der Ruhezeit“**. Beginnt die Ruhezeit während einer anderen Karte, wird die Stelle gemerkt und pausiert. Tasten können dann nur noch pausieren. |
+
+### Tageslimit
+
+Global unter *Musikkarten → Lesegeräte → Tageslimit*, gezählt über alle Lesegeräte mit
+aktiver Kindersicherung. Es gilt nur für Karten mit **„Tageslimit gilt“** (Schalter in der
+Karte); Einschlafmusik o. Ä. lässt man einfach aus.
+
+| Limit | Zählt |
+|---|---|
+| **Hörspiele pro Tag** (0 = kein Limit) | verschiedene Karten pro Tag. Dieselbe Karte erneut auflegen zählt nicht neu. |
+| **Hörzeit pro Tag** (Minuten, 0 = kein Limit) | Zeit, in der eine solche Karte aufliegt **und** der Lautsprecher spielt. Pausen zählen nicht. |
+
+- Ist ein Limit erreicht, startet eine neue Karte nicht (LEDs blinken), und die Eltern
+  bekommen eine Mitteilung mit **Erlauben** (Anzahl) bzw. **+15 min / +30 min** (Hörzeit) und
+  **Ablehnen**. Nach der Freigabe startet die Karte sofort, sofern sie noch aufliegt; die
+  Mitteilung verschwindet auf den anderen Geräten.
+- Läuft die Hörzeit während einer Karte ab, wird wie beim Schlaf-Timer ausgeblendet, die
+  Stelle gemerkt und pausiert; die Eltern werden ebenfalls gefragt.
+- Play auf einer gesperrten Karte fragt erneut (höchstens einmal pro Minute). Wurde
+  inzwischen zurückgesetzt oder verlängert, startet Play die Karte direkt.
+- Um Mitternacht beginnt der Zähler neu. Zurücksetzen/verlängern: Panel, Taste
+  *Tageslimits zurücksetzen* (`button`) oder Dienste `nfc_musikbox.reset_limits` /
+  `nfc_musikbox.extend_limits` (`count`, `minutes`).
+- Sensoren am Gerät *NFC-Musikbox*: **Hörspiele heute** und **Hörzeit heute** (Attribute
+  `limit`, `remaining`).
+- Mitteilungen gehen an die ausgewählten `notify.mobile_app_*`-Dienste (Companion-App).
+  Ohne Auswahl wird nur gesperrt.
+
+### Live-Aktivität
+
+Optional (Schalter im Abschnitt *Tageslimit*): Solange eine Karte mit Tageslimit läuft,
+zeigt der Sperrbildschirm der Eltern Karte, Kapitel („Kapitel 3 von 12“) und einen Balken.
+Gibt es ein Ende (verbleibende Hörzeit oder Schlaf-Timer, das frühere zählt), läuft der
+Balken als Countdown bis dahin, mit Timer auf dem Gerät. Sonst zeigt der Balken das Kapitel
+von allen. Die Gesamtrestdauer eines Albums kennt Home Assistant nicht (Sonos liefert nur die
+Länge des aktuellen Titels), deshalb gibt es keinen Countdown „bis das Hörspiel zu Ende ist“.
+Aktualisiert wird nur bei Play/Pause und Kapitelwechsel; beim Abziehen endet sie.
+Voraussetzung: iOS 17.2+, Companion-App 2026.9+ (Android: „Live Updates“).
 
 Bei gesperrter Karte blinken mit **Firmware v4** (`firmware/nfc-musikbox.yaml`) beide LEDs
 dreimal. Mit älterer Firmware passiert sichtbar einfach nichts.

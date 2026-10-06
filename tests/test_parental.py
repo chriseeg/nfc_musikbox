@@ -1,4 +1,4 @@
-"""Kindersicherung: Ruhezeit, Maximallautstärke, Schlaf-Timer, LED-Sperrsignal."""
+"""Kindersicherung: Maximallautstärke, Schlaf-Timer, LED-Sperrsignal."""
 
 from __future__ import annotations
 
@@ -14,11 +14,10 @@ from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
 )
-from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
 from custom_components.nfc_musikbox import scanner
 from custom_components.nfc_musikbox.const import DOMAIN
-from custom_components.nfc_musikbox.store import Card, Position
+from custom_components.nfc_musikbox.store import Card
 
 from .conftest import CARD_SENSOR, PLAY_EVENT, PLAYER, make_entry, make_reader
 from .fake_player import ALL_FEATURES, FakeSonos
@@ -27,7 +26,6 @@ from .test_scanner import FAST_OPTIONS, MEDIA_A, MEDIA_B, card, settle
 
 A = "CA-09-0C-05"
 B = "8E-12-13-05"
-QUIET = "input_boolean.schlafenszeit"
 LED_SERVICE = "nfc_musikbox_set_playback_state"
 
 
@@ -57,92 +55,15 @@ async def setup(hass: HomeAssistant, **settings: Any) -> MockConfigEntry:
     entry = make_entry(make_reader(hass), options=FAST_OPTIONS)
     hass.states.async_set(CARD_SENSOR, "none")
     hass.states.async_set(PLAY_EVENT, "unknown", {"event_type": None})
-    hass.states.async_set(QUIET, "off")
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     store = entry.runtime_data.store
     await store.async_set_card(Card(A, "Hörspiel", MEDIA_A))
-    await store.async_set_card(
-        Card(B, "Einschlafmusik", MEDIA_B, mode="simple", allow_in_quiet=True)
-    )
+    await store.async_set_card(Card(B, "Einschlafmusik", MEDIA_B, mode="simple"))
     if settings:
         await store.async_set_reader_settings(next(iter(entry.subentries)), **settings)
     await settle(hass)
     return entry
-
-
-# ---------- Ruhezeit ----------
-
-
-async def test_quiet_blocks_card_and_flashes_led(
-    hass: HomeAssistant, player: FakeSonos, led_calls: list[str]
-) -> None:
-    await setup(hass, quiet_entity=QUIET)
-    hass.states.async_set(QUIET, "on")
-    led_calls.clear()
-    await card(hass, A)
-    assert "media_player.play_media" not in player.service_names
-    assert led_calls == ["locked"]
-
-    # Abziehen der gesperrten Karte ändert nichts (keine Stelle, keine Pause)
-    player.calls.clear()
-    await card(hass, "none")
-    assert player.service_names == []
-
-
-async def test_quiet_allows_marked_card(hass: HomeAssistant, player: FakeSonos) -> None:
-    await setup(hass, quiet_entity=QUIET)
-    hass.states.async_set(QUIET, "on")
-    await card(hass, B)
-    assert "media_player.play_media" in player.service_names
-
-
-async def test_quiet_ignored_when_parental_off(hass: HomeAssistant, player: FakeSonos) -> None:
-    await setup(hass, quiet_entity=QUIET, parental=False)
-    hass.states.async_set(QUIET, "on")
-    await card(hass, A)
-    assert "media_player.play_media" in player.service_names
-
-
-async def test_quiet_start_pauses_and_saves_position(
-    hass: HomeAssistant, player: FakeSonos
-) -> None:
-    entry = await setup(hass, quiet_entity=QUIET)
-    await card(hass, A)
-    player.set_playing(q=2, pos=300)
-    player.calls.clear()
-
-    hass.states.async_set(QUIET, "on")
-    await settle(hass)
-    assert player.service_names == ["media_player.media_pause"]
-    assert entry.runtime_data.store.positions[A] == Position(q=2, p=300, t="Kapitel 2")
-
-
-async def test_quiet_buttons_only_pause(
-    hass: HomeAssistant, player: FakeSonos, led_calls: list[str]
-) -> None:
-    await setup(hass, quiet_entity=QUIET)
-    hass.states.async_set(QUIET, "on")
-    await card(hass, A)
-    player.set_paused(q=1, pos=10)
-    player.calls.clear()
-    led_calls.clear()
-    await press(hass, PLAY_EVENT, "kurz")
-    assert player.service_names == []
-    assert led_calls == ["locked"]
-
-
-async def test_quiet_entity_change_resubscribes(hass: HomeAssistant, player: FakeSonos) -> None:
-    entry = await setup(hass)
-    await card(hass, A)
-    player.set_playing(q=1, pos=10)
-    await entry.runtime_data.store.async_set_reader_settings(
-        next(iter(entry.subentries)), quiet_entity=QUIET
-    )
-    player.calls.clear()
-    hass.states.async_set(QUIET, "on")
-    await settle(hass)
-    assert player.service_names == ["media_player.media_pause"]
 
 
 # ---------- Maximallautstärke ----------
@@ -260,29 +181,3 @@ async def test_parental_entities(hass: HomeAssistant, player: FakeSonos) -> None
     )
     settings = entry.runtime_data.store.get_reader_settings(rid)
     assert (settings.parental, settings.max_volume, settings.sleep_timer) == (False, 45, 30)
-
-
-async def test_ws_reader_update_parental(
-    hass: HomeAssistant, player: FakeSonos, hass_ws_client: WebSocketGenerator
-) -> None:
-    entry = await setup(hass)
-    rid = next(iter(entry.subentries))
-    ws = await hass_ws_client(hass)
-    msg = {"type": f"{DOMAIN}/reader/update", "reader": rid}
-    await ws.send_json_auto_id({**msg, "quiet_entity": QUIET, "max_volume": 60})
-    assert (await ws.receive_json())["success"]
-    await ws.send_json_auto_id({**msg, "quiet_entity": "input_boolean.gibtsnicht"})
-    assert (await ws.receive_json())["error"]["code"] == "unknown_entity"
-
-    hass.states.async_set(QUIET, "on")
-    await ws.send_json_auto_id({"type": f"{DOMAIN}/subscribe"})
-    await ws.receive_json()
-    reader = (await ws.receive_json())["event"]["readers"][0]
-    assert reader["quiet_entity"] == QUIET
-    assert reader["quiet_active"] is True
-    assert reader["max_volume"] == 60
-
-    await ws.send_json_auto_id({**msg, "quiet_entity": None})
-    msgs = [await ws.receive_json(), await ws.receive_json()]
-    assert any(m.get("success") for m in msgs if m["type"] == "result")
-    assert entry.runtime_data.store.get_reader_settings(rid).quiet_entity is None

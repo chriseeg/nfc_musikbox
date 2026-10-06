@@ -66,3 +66,8 @@ STORAGE_VERSION: Final = 1
 def card_device_identifier(tag_id: str) -> tuple[str, str]:
     """Geräte-Identifier einer Karte."""
     return (DOMAIN, f"card_{tag_id}")
+
+
+def hub_device_identifier(entry_id: str) -> tuple[str, str]:
+    """Geräte-Identifier für die globalen Entitäten (Tageslimits)."""
+    return (DOMAIN, f"hub_{entry_id}")

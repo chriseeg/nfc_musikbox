@@ -15,7 +15,7 @@ import voluptuous as vol
 from .const import DOMAIN, SIGNAL_UPDATED
 from .players import fmt_position
 from .services import MEDIA_SCHEMA, loaded_data, start_test_playback
-from .store import CARD_MODES, Card
+from .store import CARD_MODES, REPEAT_MODES, Card
 
 if TYPE_CHECKING:
     from . import NfcMusikboxData
@@ -32,6 +32,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
         ws_reset_position,
         ws_forget_tag,
         ws_play_card,
+        ws_update_reader,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -65,6 +66,7 @@ def snapshot(hass: HomeAssistant, data: NfcMusikboxData) -> dict[str, Any]:
                 "current_tag": card_state.state if card_state else None,
                 "ready": reader.is_ready,
                 "supports_restore": bool(controller and controller.player.supports_restore),
+                "start_volume": data.store.get_reader_settings(reader.subentry_id).start_volume,
             }
         )
     return {
@@ -118,6 +120,8 @@ def ws_subscribe(
         vol.Optional("mode", default="tonie"): vol.In(CARD_MODES),
         vol.Optional("enabled", default=True): cv.boolean,
         vol.Optional("readers", default=list): [cv.string],
+        vol.Optional("shuffle", default=None): vol.Any(None, cv.boolean),
+        vol.Optional("repeat", default=None): vol.Any(None, vol.In(REPEAT_MODES)),
     }
 )
 @websocket_api.async_response
@@ -138,6 +142,8 @@ async def ws_save_card(
         mode=msg["mode"],
         enabled=msg["enabled"],
         readers=msg["readers"],
+        shuffle=msg["shuffle"],
+        repeat=msg["repeat"],
     )
     await data.store.async_set_card(card)
     connection.send_result(msg["id"], _card_dict(data, card))
@@ -207,3 +213,25 @@ def ws_play_card(
         connection.send_error(msg["id"], "play_failed", str(err))
         return
     connection.send_result(msg["id"], {"reader": reader_id})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/reader/update",
+        vol.Required("reader"): cv.string,
+        vol.Required("start_volume"): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+    }
+)
+@websocket_api.async_response
+async def ws_update_reader(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    data = _data_or_error(hass, connection, msg["id"])
+    if data is None:
+        return
+    if msg["reader"] not in data.readers:
+        connection.send_error(msg["id"], "unknown_reader", "Unbekanntes Lesegerät")
+        return
+    await data.store.async_set_reader_settings(msg["reader"], start_volume=msg["start_volume"])
+    connection.send_result(msg["id"])

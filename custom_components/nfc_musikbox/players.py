@@ -13,17 +13,25 @@ from homeassistant.components.media_player.const import (
     ATTR_MEDIA_CONTENT_TYPE,
     ATTR_MEDIA_POSITION,
     ATTR_MEDIA_POSITION_UPDATED_AT,
+    ATTR_MEDIA_REPEAT,
     ATTR_MEDIA_SEEK_POSITION,
+    ATTR_MEDIA_SHUFFLE,
     ATTR_MEDIA_TITLE,
+    ATTR_MEDIA_VOLUME_LEVEL,
     DOMAIN as MP_DOMAIN,
     SERVICE_PLAY_MEDIA,
+    MediaPlayerEntityFeature,
 )
 from homeassistant.const import (
     ATTR_ENTITY_ID,
+    ATTR_SUPPORTED_FEATURES,
     SERVICE_MEDIA_PAUSE,
     SERVICE_MEDIA_PLAY,
     SERVICE_MEDIA_PLAY_PAUSE,
     SERVICE_MEDIA_SEEK,
+    SERVICE_REPEAT_SET,
+    SERVICE_SHUFFLE_SET,
+    SERVICE_VOLUME_SET,
     STATE_PAUSED,
     STATE_PLAYING,
 )
@@ -180,6 +188,23 @@ class PlayerBackend:
 
     async def async_seek(self, position: float) -> None:
         await self._call(MP_DOMAIN, SERVICE_MEDIA_SEEK, **{ATTR_MEDIA_SEEK_POSITION: position})
+
+    def supports(self, feature: MediaPlayerEntityFeature) -> bool:
+        state = self.state
+        if state is None:
+            return False
+        return bool(int(state.attributes.get(ATTR_SUPPORTED_FEATURES) or 0) & feature)
+
+    async def async_set_volume(self, percent: int) -> None:
+        await self._call(
+            MP_DOMAIN, SERVICE_VOLUME_SET, **{ATTR_MEDIA_VOLUME_LEVEL: round(percent / 100, 2)}
+        )
+
+    async def async_set_shuffle(self, shuffle: bool) -> None:
+        await self._call(MP_DOMAIN, SERVICE_SHUFFLE_SET, **{ATTR_MEDIA_SHUFFLE: shuffle})
+
+    async def async_set_repeat(self, repeat: str) -> None:
+        await self._call(MP_DOMAIN, SERVICE_REPEAT_SET, **{ATTR_MEDIA_REPEAT: repeat})
 
     async def async_restore(self, position: Position) -> bool:
         """Nach play_media die gemerkte Stelle anfahren. True bei Erfolg."""

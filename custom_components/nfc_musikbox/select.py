@@ -1,4 +1,4 @@
-"""Auswahl "Betriebsart" (Tonie/Einfach) pro Karte."""
+"""Auswahl "Betriebsart" (Hörspiel/Musik) pro Karte."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ async def async_setup_entry(
 
 
 class CardModeSelect(CardEntity, SelectEntity):
-    """Tonie: läuft nur, solange die Karte liegt. Einfach: startet nur."""
+    """Hörspiel: läuft nur, solange die Karte liegt. Musik: startet nur."""
 
     _attr_entity_category = EntityCategory.CONFIG
 

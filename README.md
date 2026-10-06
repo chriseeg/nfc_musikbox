@@ -24,7 +24,7 @@ Attribute zeigen, welche Entitäten gefunden wurden (Karten-Sensor, Tasten, LED-
 
 ## Verhalten
 
-**Tonie** (Standard)
+**Hörspiel-Modus** (Standard, intern `tonie`)
 
 | Aktion | Ergebnis |
 |---|---|
@@ -37,7 +37,16 @@ Gemerkt werden Titelnummer in der Queue, Sekunde und Titelname. Fortsetzen an de
 klappt nur mit Sonos (Titelsprung per `sonos.play_queue`, dann Spulen). Andere Player
 starten das Medium von vorne.
 
-**Einfach**: Auflegen startet das Medium von vorne, Abziehen tut nichts.
+**Musik-Modus** (intern `simple`): Auflegen startet das Medium von vorne, Abziehen tut
+nichts. Pro Karte einstellbar: **Zufallswiedergabe** und **Wiederholen** (aus/alle/Titel)
+oder „nicht ändern“.
+
+Der Hörspiel-Modus schaltet die Zufallswiedergabe beim Start immer aus: Sonos merkt sich
+Shuffle pro Lautsprecher, und mit Shuffle würde die gemerkte Titelnummer nicht passen.
+
+**Startlautstärke** pro Lesegerät (Panel → Lesegeräte oder Entität „Startlautstärke“ am
+Lesegerät): Beim Auflegen einer Karte wird vor dem Abspielen diese Lautstärke gesetzt.
+0 % = Lautstärke nicht ändern.
 
 Karten ohne Zuordnung, deaktivierte Karten und Karten, die für ein anderes Lesegerät
 freigegeben sind, werden ignoriert. Zustandswechsel von/nach `unavailable`/`unknown`
@@ -125,8 +134,6 @@ Abziehen der Karte wird die Stelle neu gemerkt.
 
 ## Bekannte Einschränkungen
 
-- Playlisten mit **Zufallswiedergabe**: Die Queue-Position ist nicht stabil, Fortsetzen
-  trifft dann nicht den richtigen Titel.
 - **Fortsetzen an der Stelle** gibt es nur für Sonos; andere Player starten von vorne.
 - Gemerkt wird **pro Karte**, nicht pro Lesegerät: Liegt dieselbe Karte an einem zweiten
   Lesegerät, setzt sie dort an der zuletzt gemerkten Stelle fort.

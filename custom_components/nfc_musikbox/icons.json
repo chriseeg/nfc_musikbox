@@ -15,10 +15,15 @@
     },
     "select": {
       "mode": {
-        "default": "mdi:cards-playing-outline",
+        "default": "mdi:book-music-outline",
         "state": {
-          "simple": "mdi:play-circle-outline"
+          "simple": "mdi:music"
         }
+      }
+    },
+    "number": {
+      "start_volume": {
+        "default": "mdi:volume-medium"
       }
     }
   },

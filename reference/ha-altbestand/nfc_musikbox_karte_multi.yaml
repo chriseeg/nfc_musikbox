@@ -1,0 +1,102 @@
+blueprint:
+  name: NFC-Musikbox – Karte für mehrere Scanner
+  description: 'Eine Karte startet ein Medium (Album, Playlist, Sonos-Favorit, Radio
+    ...), das du über den Medien-Browser auswählst. Die Karte kann an mehreren Scannern
+    funktionieren: Jeder Scanner gehört zu genau einem Lautsprecher und hat einen
+    eigenen Sperr-Timer (Timer-Helper, dessen Dauer die Sperrzeit nach einem gestarteten
+    Medium ist). Pro Karte legst du eine Automation aus diesem Blueprint an. Neue
+    Karten erscheinen unter Einstellungen > Tags, sobald sie einmal gescannt wurden.
+
+    '
+  domain: automation
+  author: Christian Seeger
+  homeassistant:
+    min_version: 2025.6.0
+  input:
+    card:
+      name: Karte
+      description: Die NFC-Karte (Tag). Sie erscheint in der Liste, nachdem sie einmal
+        gescannt wurde.
+      selector:
+        entity:
+          domain:
+          - tag
+          multiple: false
+          reorder: false
+    media:
+      name: Medium
+      description: Album, Playlist, Favorit oder Radiosender, über den Medien-Browser
+        gewählt.
+      selector:
+        media:
+          multiple: false
+    scanners:
+      name: Scanner und Lautsprecher
+      description: 'Welche Scanner diese Karte akzeptieren, jeweils mit dem Lautsprecher
+        dieses Scanners und dessen Sperr-Timer. Vorbelegt mit der NFC-Musikbox im
+        Kinderzimmer. Einträge hinzufügen oder entfernen, um die Karte für weitere
+        Scanner freizugeben.
+
+        '
+      default:
+      - reader: c1a7d7a00429ba9385bb6c61867b4374
+        player: media_player.sonos_kinderzimmer
+        lock: timer.nfc_musikbox_sperre
+      selector:
+        object:
+          multiple: true
+          label_field: player
+          fields:
+            reader:
+              required: true
+              label: NFC-Reader
+              selector:
+                device:
+                  integration: esphome
+                  multiple: false
+            player:
+              required: true
+              label: Lautsprecher
+              selector:
+                entity:
+                  domain:
+                  - media_player
+                  multiple: false
+                  reorder: false
+            lock:
+              required: true
+              label: Sperr-Timer
+              selector:
+                entity:
+                  domain:
+                  - timer
+                  multiple: false
+                  reorder: false
+mode: queued
+max: 5
+max_exceeded: silent
+triggers:
+- trigger: state
+  entity_id: !input card
+  to:
+actions:
+- repeat:
+    for_each: !input scanners
+    sequence:
+    - if:
+      - condition: template
+        value_template: '{{ repeat.item.reader == trigger.to_state.attributes.last_scanned_by_device_id
+          }}
+
+          '
+      - condition: template
+        value_template: '{{ is_state(repeat.item.lock, ''idle'') }}'
+      then:
+      - action: timer.start
+        target:
+          entity_id: '{{ repeat.item.lock }}'
+      - action: media_player.play_media
+        target:
+          entity_id: '{{ repeat.item.player }}'
+        data:
+          media: !input media

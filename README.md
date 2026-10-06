@@ -20,8 +20,8 @@ Karte, wo die Wiedergabe stand – wie bei einer Tonie-Box.
 4. In der Integration **„Lesegerät hinzufügen“**: ESPHome-Gerät und Lautsprecher wählen.
 
 Pro Lesegerät entsteht ein Gerät mit den Diagnose-Entitäten **„Aktuelle Karte“** und
-**„Verbindung“** (aus = Lesegerät nicht mit Home Assistant verbunden). Seine
-Attribute zeigen, welche Entitäten gefunden wurden (Karten-Sensor, Tasten, LED-Aktion).
+**„Verbindung“** (aus = Lesegerät nicht mit Home Assistant verbunden). Die Attribute von „Aktuelle Karte“ zeigen, welche Entitäten gefunden wurden
+(Karten-Sensor, Tasten, LED-Aktion).
 
 ## Verhalten
 

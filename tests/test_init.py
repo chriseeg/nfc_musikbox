@@ -102,3 +102,24 @@ async def test_reload_keeps_pending_position(hass: HomeAssistant) -> None:
 
     assert await hass.config_entries.async_reload(entry.entry_id)
     assert entry.runtime_data.store.positions["A"] == Position(q=2, p=99, t="x")
+
+
+async def test_connectivity_sensor(hass: HomeAssistant) -> None:
+    reader = make_reader(hass)
+    hass.states.async_set(CARD_SENSOR, "none")
+    entry = make_entry(reader)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    sensor_id = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", DOMAIN, f"{next(iter(entry.subentries))}_connected"
+    )
+    assert sensor_id is not None
+    assert hass.states.get(sensor_id).state == "on"
+
+    hass.states.async_set(CARD_SENSOR, "unavailable")
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor_id).state == "off"
+
+    hass.states.async_set(CARD_SENSOR, "CA-09-0C-05")
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor_id).state == "on"

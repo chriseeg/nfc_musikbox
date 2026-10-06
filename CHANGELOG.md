@@ -4,6 +4,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0]
+
+### Hinzugefügt
+- Hinweis im Panel, wenn ein Lesegerät nicht verbunden ist (Banner mit „seit …“, Hinweis in
+  Lesegeräte-Ansicht und bei „Funktioniert an“).
+- `binary_sensor` „Verbindung“ (Diagnose, `connectivity`) pro Lesegerät, z. B. für eine
+  Benachrichtigung, wenn die Box länger offline ist.
+
 ## [0.6.1]
 
 ### Behoben

@@ -91,6 +91,11 @@
       "start_volume": {
         "name": "Start volume"
       }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Connection"
+      }
     }
   },
   "services": {

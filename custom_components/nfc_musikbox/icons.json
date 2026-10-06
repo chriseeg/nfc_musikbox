@@ -25,6 +25,14 @@
       "start_volume": {
         "default": "mdi:volume-medium"
       }
+    },
+    "binary_sensor": {
+      "connected": {
+        "default": "mdi:lan-connect",
+        "state": {
+          "off": "mdi:lan-disconnect"
+        }
+      }
     }
   },
   "services": {

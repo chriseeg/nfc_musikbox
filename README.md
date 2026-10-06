@@ -19,7 +19,8 @@ Karte, wo die Wiedergabe stand – wie bei einer Tonie-Box.
 3. *Einstellungen → Geräte & Dienste → Integration hinzufügen → NFC-Musikbox*.
 4. In der Integration **„Lesegerät hinzufügen“**: ESPHome-Gerät und Lautsprecher wählen.
 
-Pro Lesegerät entsteht ein Gerät mit dem Diagnose-Sensor **„Aktuelle Karte“**. Seine
+Pro Lesegerät entsteht ein Gerät mit den Diagnose-Entitäten **„Aktuelle Karte“** und
+**„Verbindung“** (aus = Lesegerät nicht mit Home Assistant verbunden). Seine
 Attribute zeigen, welche Entitäten gefunden wurden (Karten-Sensor, Tasten, LED-Aktion).
 
 ## Verhalten

@@ -91,6 +91,11 @@
       "start_volume": {
         "name": "Startlautstärke"
       }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Verbindung"
+      }
     }
   },
   "services": {

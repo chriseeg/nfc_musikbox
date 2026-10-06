@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import logging
 
 from homeassistant.config_entries import ConfigSubentry
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
@@ -117,3 +118,11 @@ def resolve_reader(hass: HomeAssistant, subentry: ConfigSubentry) -> ReaderConfi
         if getattr(reader, attr) is None:
             _LOGGER.warning("Lesegerät %s: %s nicht gefunden", reader.title, attr)
     return reader
+
+
+def reader_online(hass: HomeAssistant, reader: ReaderConfig) -> bool:
+    """ESPHome setzt die Entitäten auf unavailable, sobald die Verbindung abreißt."""
+    if reader.card_sensor is None:
+        return False
+    state = hass.states.get(reader.card_sensor)
+    return state is not None and state.state != STATE_UNAVAILABLE

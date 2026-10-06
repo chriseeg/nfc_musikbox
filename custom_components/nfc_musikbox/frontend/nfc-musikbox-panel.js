@@ -225,6 +225,17 @@
       }).join(';');
       return `${tags}#${rd}`;
     }
+    _online(r) {
+      const st = r.card_sensor && this._hass.states[r.card_sensor];
+      return !!st && st.state !== 'unavailable';
+    }
+    _offlineSince(r) {
+      const st = r.card_sensor && this._hass.states[r.card_sensor];
+      if (!st || !st.last_changed) return '';
+      const d = new Date(st.last_changed);
+      const today = new Date().toDateString() === d.toDateString();
+      return ` – seit ${today ? d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
+    }
     _readerName(id) { const r = this.readers.find((x) => x.id === id); return r ? r.title : 'Unbekanntes Lesegerät'; }
     _playerShort(r) { return String(r.player_name || r.player).replace(/^Sonos\s+/i, ''); }
     _lastFor(tagId) {
@@ -287,6 +298,9 @@
       const nR = this.readers.length;
       let h = `<div class="wrap"><p class="sub">${cards.length} ${cards.length === 1 ? 'Karte' : 'Karten'} · ${nR} ${nR === 1 ? 'Lesegerät' : 'Lesegeräte'}</p>`;
       if (!nR) h += `<div class="warn"><b>Noch kein Lesegerät.</b> Füge es unter <i>Lesegeräte</i> (Zahnrad oben rechts) hinzu.</div>`;
+      this.readers.filter((r) => r.ready && !this._online(r)).forEach((r) => {
+        h += `<div class="warn">${ic('lan-disconnect')} <b>${esc(r.title)} ist nicht verbunden</b>${this._offlineSince(r)}. Karten und Tasten reagieren erst wieder, wenn das Lesegerät Strom und WLAN hat.</div>`;
+      });
       if (fresh.length) {
         h += `<h2>Noch ohne Musik</h2>`;
         fresh.forEach((t) => {
@@ -338,7 +352,8 @@
           <label class="f">Startlautstärke</label>
           <div class="vol">${ic('volume-medium')}<input type="range" min="0" max="100" step="5" value="${Number(r.start_volume) || 0}" data-vol="${esc(r.id)}" aria-label="Startlautstärke">
             <span class="vv" data-vv="${esc(r.id)}">${volLabel(r.start_volume)}</span></div>
-          ${r.ready ? '' : `<p class="hint" style="color:var(--bad)">Sensor „Karte auf dem Reader“ fehlt. Läuft auf dem Lesegerät die Firmware v3?</p>`}</div>`;
+          ${r.ready ? '' : `<p class="hint" style="color:var(--bad)">Sensor „Karte auf dem Reader“ fehlt. Läuft auf dem Lesegerät die Firmware v3?</p>`}
+          ${r.ready && !this._online(r) ? `<p class="hint" style="color:var(--bad)">Nicht verbunden${this._offlineSince(r)}.</p>` : ''}</div>`;
       });
       h += `<div class="tests" style="margin-top:14px"><button class="btn primary" data-a="nav" data-u="${INTEGRATION_URL}">${ic('plus')}Lesegerät hinzufügen</button>
         <button class="btn" data-a="nav" data-u="${INTEGRATION_URL}">${ic('pencil-outline')}Lautsprecher ändern</button></div>
@@ -380,7 +395,7 @@
           <label class="f">Funktioniert an</label>
           ${this.readers.length ? this.readers.map((r) => `<button class="sc ${sh.sel.has(r.id) ? 'on' : ''} ${r.ready ? '' : 'off'}" data-a="toggle-reader" data-r="${esc(r.id)}">
             ${ic(sh.sel.has(r.id) ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline')}
-            <span class="t">${esc(r.title)}<small>${r.ready ? `→ ${esc(r.player_name)}` : 'Sensor „Karte auf dem Reader“ fehlt'}</small></span></button>`).join('')
+            <span class="t">${esc(r.title)}<small>${r.ready ? `→ ${esc(r.player_name)}${this._online(r) ? '' : ' · nicht verbunden'}` : 'Sensor „Karte auf dem Reader“ fehlt'}</small></span></button>`).join('')
           : `<p class="hint">Noch kein Lesegerät eingerichtet. <button class="btn small" data-a="settings">Zu den Lesegeräten</button></p>`}
           ${sh.edit ? `<label class="f">Karte</label><button class="swrow" data-a="toggle-enabled"><span class="t">Karte aktiv<small>${sh.enabled ? 'Reagiert auf das Auflegen.' : 'Deaktiviert: Auflegen bewirkt nichts.'}</small></span><span class="sw ${sh.enabled ? 'on' : ''}"></span></button>
             <label class="f">Testen</label><div class="tests"><button class="btn small" data-a="test" data-t="${esc(sh.tag_id)}">${ic('play')}Von vorne</button>

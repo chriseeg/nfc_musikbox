@@ -14,6 +14,7 @@ import voluptuous as vol
 
 from .const import DOMAIN, SIGNAL_UPDATED
 from .players import fmt_position
+from .reader import reader_online
 from .services import MEDIA_SCHEMA, loaded_data, start_test_playback
 from .store import CARD_MODES, REPEAT_MODES, Card
 
@@ -65,6 +66,7 @@ def snapshot(hass: HomeAssistant, data: NfcMusikboxData) -> dict[str, Any]:
                 "card_sensor": reader.card_sensor,
                 "current_tag": card_state.state if card_state else None,
                 "ready": reader.is_ready,
+                "online": reader_online(hass, reader),
                 "supports_restore": bool(controller and controller.player.supports_restore),
                 "start_volume": data.store.get_reader_settings(reader.subentry_id).start_volume,
             }

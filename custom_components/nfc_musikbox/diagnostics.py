@@ -29,4 +29,6 @@ async def async_get_config_entry_diagnostics(
         "readers": readers,
         "cards": [asdict(card) for card in data.store.cards.values()],
         "positions": {tag: asdict(pos) for tag, pos in data.store.positions.items()},
+        "parental": asdict(data.store.parental),
+        "usage": data.limits.as_dict(),
     }

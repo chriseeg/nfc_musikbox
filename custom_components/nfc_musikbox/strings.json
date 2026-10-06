@@ -71,6 +71,12 @@
       },
       "position": {
         "name": "Remembered position"
+      },
+      "count_today": {
+        "name": "Stories today"
+      },
+      "time_today": {
+        "name": "Listening time today"
       }
     },
     "switch": {
@@ -104,6 +110,11 @@
     "binary_sensor": {
       "connected": {
         "name": "Connection"
+      }
+    },
+    "button": {
+      "reset_limits": {
+        "name": "Reset daily limits"
       }
     }
   },
@@ -144,9 +155,9 @@
           "name": "Repeat",
           "description": "Music mode only. Leave empty = do not change the speaker setting."
         },
-        "allow_in_quiet": {
-          "name": "Allowed during quiet time",
-          "description": "Card also works during the quiet time of the parental controls (e.g. sleep music)."
+        "limited": {
+          "name": "Daily limit applies",
+          "description": "Card counts towards the daily limits of the parental controls (number of stories, listening time)."
         }
       }
     },
@@ -185,6 +196,24 @@
         "resume": {
           "name": "Resume",
           "description": "Resume at the remembered position (like placing the card) instead of from the start."
+        }
+      }
+    },
+    "reset_limits": {
+      "name": "Reset daily limits",
+      "description": "Resets today's story count and listening time to zero."
+    },
+    "extend_limits": {
+      "name": "Extend daily limits",
+      "description": "Allows additional stories or listening time today.",
+      "fields": {
+        "count": {
+          "name": "Stories",
+          "description": "Additional stories for today."
+        },
+        "minutes": {
+          "name": "Minutes",
+          "description": "Additional listening time for today."
         }
       }
     }

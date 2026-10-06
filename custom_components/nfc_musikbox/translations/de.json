@@ -71,6 +71,12 @@
       },
       "position": {
         "name": "Gemerkte Stelle"
+      },
+      "count_today": {
+        "name": "Hörspiele heute"
+      },
+      "time_today": {
+        "name": "Hörzeit heute"
       }
     },
     "switch": {
@@ -104,6 +110,11 @@
     "binary_sensor": {
       "connected": {
         "name": "Verbindung"
+      }
+    },
+    "button": {
+      "reset_limits": {
+        "name": "Tageslimits zurücksetzen"
       }
     }
   },
@@ -144,9 +155,9 @@
           "name": "Wiederholen",
           "description": "Nur Musik-Modus. Leer lassen = Einstellung des Lautsprechers nicht ändern."
         },
-        "allow_in_quiet": {
-          "name": "Auch in der Ruhezeit",
-          "description": "Karte funktioniert auch während der Ruhezeit der Kindersicherung (z. B. Einschlafmusik)."
+        "limited": {
+          "name": "Tageslimit gilt",
+          "description": "Karte zählt zu den Tageslimits der Kindersicherung (Anzahl Hörspiele, Hörzeit)."
         }
       }
     },
@@ -185,6 +196,24 @@
         "resume": {
           "name": "Fortsetzen",
           "description": "An der gemerkten Stelle fortsetzen (wie beim Auflegen) statt von vorne."
+        }
+      }
+    },
+    "reset_limits": {
+      "name": "Tageslimits zurücksetzen",
+      "description": "Setzt die heute gezählten Hörspiele und die Hörzeit auf null."
+    },
+    "extend_limits": {
+      "name": "Tageslimits verlängern",
+      "description": "Erlaubt heute zusätzliche Hörspiele oder Hörzeit.",
+      "fields": {
+        "count": {
+          "name": "Hörspiele",
+          "description": "Zusätzliche Hörspiele für heute."
+        },
+        "minutes": {
+          "name": "Minuten",
+          "description": "Zusätzliche Hörzeit für heute."
         }
       }
     }

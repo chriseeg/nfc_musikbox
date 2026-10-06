@@ -4,6 +4,22 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.0]
+
+### Hinzugefügt
+- **Tageslimit** (global, über alle Lesegeräte): Anzahl Hörspiele und/oder Hörzeit pro Tag
+  für Karten mit „Tageslimit gilt“. Bei Erreichen Sperre plus Mitteilung an die Eltern mit
+  Aktionen „Erlauben“, „+15/+30 min“, „Ablehnen“; Freigabe startet die wartende Karte.
+  Zurücksetzen/Verlängern im Panel, per `button` und Diensten `reset_limits`/`extend_limits`.
+  Sensoren „Hörspiele heute“ und „Hörzeit heute“ am neuen Gerät „NFC-Musikbox“.
+- **Live-Aktivität** für die Eltern (iOS/Android über die Companion-App): Karte, Kapitel und
+  Countdown bis zum Ende der Hörzeit bzw. des Schlaf-Timers.
+- WS-Befehle `parental/update`, `limits/reset`, `limits/extend`.
+
+### Entfernt
+- **Ruhezeit** (Entität pro Lesegerät) und „Auch in der Ruhezeit“ pro Karte. Gespeicherte
+  Werte werden ignoriert. `assign_card` kennt statt `allow_in_quiet` jetzt `limited`.
+
 ## [0.8.0]
 
 ### Hinzugefügt

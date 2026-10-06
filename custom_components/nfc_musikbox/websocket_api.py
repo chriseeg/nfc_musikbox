@@ -13,6 +13,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 import voluptuous as vol
 
 from .const import DOMAIN, SIGNAL_UPDATED
+from .parents import notify_services
 from .players import fmt_position
 from .reader import reader_online
 from .services import MEDIA_SCHEMA, loaded_data, start_test_playback
@@ -35,6 +36,9 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
         ws_forget_tag,
         ws_play_card,
         ws_update_reader,
+        ws_update_parental,
+        ws_reset_limits,
+        ws_extend_limits,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -44,17 +48,6 @@ def _card_dict(data: NfcMusikboxData, card: Card) -> dict[str, Any]:
     return {
         **asdict(card),
         "position": ({**asdict(position), "text": fmt_position(position)} if position else None),
-    }
-
-
-def _reader_settings_dict(
-    hass: HomeAssistant, data: NfcMusikboxData, reader_id: str
-) -> dict[str, Any]:
-    settings = data.store.get_reader_settings(reader_id)
-    quiet = hass.states.get(settings.quiet_entity) if settings.quiet_entity else None
-    return {
-        **asdict(settings),
-        "quiet_active": bool(settings.parental and quiet is not None and quiet.state == "on"),
     }
 
 
@@ -80,11 +73,14 @@ def snapshot(hass: HomeAssistant, data: NfcMusikboxData) -> dict[str, Any]:
                 "ready": reader.is_ready,
                 "online": reader_online(hass, reader),
                 "supports_restore": bool(controller and controller.player.supports_restore),
-                **_reader_settings_dict(hass, data, reader.subentry_id),
+                **asdict(data.store.get_reader_settings(reader.subentry_id)),
             }
         )
     return {
         "readers": readers,
+        "parental": asdict(data.store.parental),
+        "usage": data.limits.as_dict(),
+        "notify_services": notify_services(hass),
         "cards": [_card_dict(data, card) for card in data.store.cards.values()],
         # Alle gescannten Tags (auch zugeordnete, für "zuletzt gescannt")
         "seen": [{"tag_id": tag_id, **asdict(seen)} for tag_id, seen in data.store.seen.items()],
@@ -136,7 +132,7 @@ def ws_subscribe(
         vol.Optional("readers", default=list): [cv.string],
         vol.Optional("shuffle", default=None): vol.Any(None, cv.boolean),
         vol.Optional("repeat", default=None): vol.Any(None, vol.In(REPEAT_MODES)),
-        vol.Optional("allow_in_quiet", default=False): cv.boolean,
+        vol.Optional("limited", default=False): cv.boolean,
     }
 )
 @websocket_api.async_response
@@ -159,7 +155,7 @@ async def ws_save_card(
         readers=msg["readers"],
         shuffle=msg["shuffle"],
         repeat=msg["repeat"],
-        allow_in_quiet=msg["allow_in_quiet"],
+        limited=msg["limited"],
     )
     await data.store.async_set_card(card)
     connection.send_result(msg["id"], _card_dict(data, card))
@@ -240,7 +236,6 @@ def ws_play_card(
         vol.Optional("max_volume"): PERCENT,
         vol.Optional("sleep_timer"): vol.All(vol.Coerce(int), vol.Range(min=0, max=180)),
         vol.Optional("parental"): cv.boolean,
-        vol.Optional("quiet_entity"): vol.Any(None, "", cv.entity_id),
     }
 )
 @websocket_api.async_response
@@ -254,9 +249,63 @@ async def ws_update_reader(
         connection.send_error(msg["id"], "unknown_reader", "Unbekanntes Lesegerät")
         return
     changes = {k: v for k, v in msg.items() if k not in ("id", "type", "reader")}
-    quiet = changes.get("quiet_entity")
-    if quiet and hass.states.get(quiet) is None:
-        connection.send_error(msg["id"], "unknown_entity", f"Entität {quiet} gibt es nicht")
-        return
     await data.store.async_set_reader_settings(msg["reader"], **changes)
+    connection.send_result(msg["id"])
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/parental/update",
+        vol.Optional("daily_count"): vol.All(vol.Coerce(int), vol.Range(min=0, max=50)),
+        vol.Optional("daily_minutes"): vol.All(vol.Coerce(int), vol.Range(min=0, max=1440)),
+        vol.Optional("notify"): [cv.string],
+        vol.Optional("live_activity"): cv.boolean,
+    }
+)
+@websocket_api.async_response
+async def ws_update_parental(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    data = _data_or_error(hass, connection, msg["id"])
+    if data is None:
+        return
+    changes = {k: v for k, v in msg.items() if k not in ("id", "type")}
+    unknown = [n for n in changes.get("notify", []) if n not in notify_services(hass)]
+    if unknown:
+        connection.send_error(msg["id"], "unknown_service", f"Unbekannter Dienst: {unknown}")
+        return
+    await data.store.async_set_parental(**changes)
+    connection.send_result(msg["id"])
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/limits/reset"})
+@callback
+def ws_reset_limits(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    data = _data_or_error(hass, connection, msg["id"])
+    if data is None:
+        return
+    data.limits.reset()
+    connection.send_result(msg["id"])
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/limits/extend",
+        vol.Optional("count", default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=20)),
+        vol.Optional("minutes", default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=600)),
+    }
+)
+@callback
+def ws_extend_limits(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    data = _data_or_error(hass, connection, msg["id"])
+    if data is None:
+        return
+    data.limits.extend(msg["count"], msg["minutes"])
     connection.send_result(msg["id"])

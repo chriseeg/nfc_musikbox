@@ -20,6 +20,8 @@ Drucken: „Tatsächliche Größe“ bzw. 100 %, nicht „An Seite anpassen“. 
 Versatz mit --versatz-x/--versatz-y (mm, positiv = nach rechts/unten) ausgleichen.
 """
 
+from __future__ import annotations
+
 import argparse
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace

@@ -188,8 +188,9 @@ Abziehen der Karte wird die Stelle neu gemerkt.
 ## Etiketten für die Karten drucken
 
 `tools/kartenbogen.py` setzt Album-Cover auf Etikettenbögen HERMA 5028 (83,8 × 50,8 mm,
-10 pro A4-Bogen). Läuft auf dem Rechner und braucht `pip install pillow reportlab fonttools`
-(für `--png` zusätzlich `pypdfium2`).
+10 pro A4-Bogen). Läuft auf dem Rechner und braucht `pip install pillow "reportlab<5" fonttools`
+(für `--png` zusätzlich `pypdfium2`). Python 3.9 reicht; reportlab 5 verlangt 3.10+,
+deshalb `<5`.
 
 ```bash
 python3 tools/kartenbogen.py ~/Cover -o karten.pdf            # Cover links, Text rechts

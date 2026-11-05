@@ -97,7 +97,7 @@ def pt_zu_px(pt: float) -> float:
 
 @dataclass(frozen=True)
 class Text:
-    """Eine Textzeile; x/y = Beginn der Grundlinie in px, drehung 0 oder 90 (gegen den Uhrzeiger)."""
+    """Eine Textzeile; x/y = Beginn der Grundlinie in px, drehung 0 oder 90 (gegen Uhrzeiger)."""
 
     text: str
     schrift: str

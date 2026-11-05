@@ -11,18 +11,28 @@ Nummer vorne („01 Puderzucker.jpg“) legt nur die Reihenfolge fest und wird n
 Die Grundfarbe jedes Etiketts kommt aus dem Cover, die Schrift wird hell oder dunkel, je
 nachdem, was darauf besser lesbar ist.
 
+Im PDF sind Cover und Hintergrund Pixelbilder (300 dpi), jeder Text ist dagegen als
+Vektorkontur gezeichnet: scharf in jeder Vergrößerung, keine Schrift eingebettet nötig.
+Abhängigkeiten: pillow, reportlab, fonttools (für --png zusätzlich pypdfium2).
+
 Drucken: „Tatsächliche Größe“ bzw. 100 %, nicht „An Seite anpassen“. Vorher einmal
 --probe auf Normalpapier drucken, gegen das Licht auf einen Etikettenbogen legen und den
 Versatz mit --versatz-x/--versatz-y (mm, positiv = nach rechts/unten) ausgleichen.
 """
 
 import argparse
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
+from functools import cache
 from pathlib import Path
 import re
 import sys
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from fontTools.pens.basePen import BasePen
+from fontTools.ttLib import TTFont
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas
 
 SCHRIFTEN = Path(__file__).resolve().parent / "schriften"
 DPI = 300
@@ -58,8 +68,99 @@ def px(mm: float) -> int:
     return round(mm * MM)
 
 
-def schrift(name: str, pt: float) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(SCHRIFTEN / name), round(pt * DPI / 72))
+class Schrift:
+    """Metriken und Umrisse einer OTF/TTF-Datei (ohne Kerning)."""
+
+    def __init__(self, datei: str) -> None:
+        font = TTFont(SCHRIFTEN / datei)
+        self.einheiten: int = font["head"].unitsPerEm
+        self.ascent: int = font["hhea"].ascent
+        self.cmap = font.getBestCmap()
+        self.hmtx = font["hmtx"]
+        self.glyphen = font.getGlyphSet()
+
+    def glyph(self, zeichen: str) -> str:
+        return self.cmap.get(ord(zeichen), ".notdef")
+
+    def breite(self, text: str, groesse: float) -> float:
+        return sum(self.hmtx[self.glyph(z)][0] for z in text) * groesse / self.einheiten
+
+
+@cache
+def schrift(name: str) -> Schrift:
+    return Schrift(name)
+
+
+def pt_zu_px(pt: float) -> float:
+    return pt * DPI / 72
+
+
+@dataclass(frozen=True)
+class Text:
+    """Eine Textzeile; x/y = Beginn der Grundlinie in px, drehung 0 oder 90 (gegen den Uhrzeiger)."""
+
+    text: str
+    schrift: str
+    groesse: float
+    farbe: tuple[int, int, int]
+    alpha: int
+    x: float
+    y: float
+    drehung: int = 0
+
+
+def text_oben(  # noqa: PLR0917
+    x: float, y_oben: float, text: str, name: str, groesse: float,
+    farbe: tuple[int, int, int], alpha: int = 255,
+) -> Text:  # fmt: skip
+    """Text, dessen Zeilenkopf (Ascender) bei y_oben liegt."""
+    f = schrift(name)
+    return Text(text, name, groesse, farbe, alpha, x, y_oben + f.ascent * groesse / f.einheiten)
+
+
+@dataclass
+class Seite:
+    bild: Image.Image | None = None
+    texte: list[Text] = field(default_factory=list)
+    zeichnen: Callable[[canvas.Canvas, float], None] | None = None
+
+
+class _PdfStift(BasePen):
+    def __init__(self, glyphen, pfad, abbilden) -> None:
+        super().__init__(glyphen)
+        self.pfad, self.abb = pfad, abbilden
+
+    def _moveTo(self, p):
+        self.pfad.moveTo(*self.abb(p))
+
+    def _lineTo(self, p):
+        self.pfad.lineTo(*self.abb(p))
+
+    def _curveToOne(self, a, b, c):
+        self.pfad.curveTo(*self.abb(a), *self.abb(b), *self.abb(c))
+
+    def _closePath(self):
+        self.pfad.close()
+
+
+def text_vektor(c: canvas.Canvas, t: Text, seite_hoehe_pt: float) -> None:
+    """Zeichnet die Glyphenumrisse als gefüllte Pfade (kein Font im PDF)."""
+    f = schrift(t.schrift)
+    faktor = t.groesse / f.einheiten
+    pfad = c.beginPath()
+    vorschub = 0.0
+    for zeichen in t.text:
+        name = f.glyph(zeichen)
+
+        def abb(p, v=vorschub):
+            u, w = v + p[0] * faktor, -p[1] * faktor  # u entlang der Schrift, w nach unten
+            x, y = (t.x + u, t.y + w) if t.drehung == 0 else (t.x + w, t.y - u)
+            return x * 72 / DPI, seite_hoehe_pt - y * 72 / DPI
+
+        f.glyphen[name].draw(_PdfStift(f.glyphen, pfad, abb))
+        vorschub += f.hmtx[name][0] * faktor
+    c.setFillColorRGB(*(v / 255 for v in t.farbe), alpha=t.alpha / 255)
+    c.drawPath(pfad, stroke=0, fill=1, fillMode=1)  # 1 = nonzero, wie CFF/TrueType
 
 
 def titel_aus_datei(pfad: Path) -> tuple[str, str]:
@@ -96,16 +197,15 @@ def textfarben(farbe: tuple[int, int, int]) -> tuple[tuple[int, ...], tuple[int,
     r, g, b = (kanal(c) for c in farbe)
     luminanz = 0.2126 * r + 0.7152 * g + 0.0722 * b
     if luminanz > 0.3:
-        return (43, 37, 32), (43, 37, 32, 170)
-    return (255, 252, 246), (255, 252, 246, 190)
+        return (43, 37, 32, 255), (43, 37, 32, 170)
+    return (255, 252, 246, 255), (255, 252, 246, 190)
 
 
-def umbrechen(
-    zeichnen: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, breite: int
-) -> list[str]:
+def umbrechen(text: str, name: str, groesse: float, breite: float) -> list[str]:
+    f = schrift(name)
     zeilen: list[str] = []
     for wort in text.split():
-        if zeilen and zeichnen.textlength(f"{zeilen[-1]} {wort}", font=font) <= breite:
+        if zeilen and f.breite(f"{zeilen[-1]} {wort}", groesse) <= breite:
             zeilen[-1] += f" {wort}"
         else:
             zeilen.append(wort)
@@ -113,39 +213,40 @@ def umbrechen(
 
 
 def textblock(
-    zeichnen: ImageDraw.ImageDraw,
     box: tuple[int, int, int, int],
     titel: str,
     untertitel: str,
     farben: tuple[tuple[int, ...], tuple[int, ...]],
     *,
     max_pt: float,
-) -> None:
+) -> list[Text]:
     """Titel und Untertitel, linksbündig, vertikal mittig; Titel schrumpft bis er passt."""
     x0, y0, x1, y1 = box
     farbe, farbe2 = farben
     breite, hoehe = x1 - x0, y1 - y0
     pt = max_pt
     while True:
-        font = schrift("Inter-Medium.otf", pt)
-        font2 = schrift("Inter-Regular.otf", max(pt * 0.62, 6.5))
-        zeilen = umbrechen(zeichnen, titel, font, breite)
-        zeilen2 = umbrechen(zeichnen, untertitel, font2, breite) if untertitel else []
-        zh, zh2 = round(font.size * 1.15), round(font2.size * 1.3)
-        luecke = round(font.size * 0.45) if zeilen2 else 0
+        gr = round(pt_zu_px(pt))
+        gr2 = round(pt_zu_px(max(pt * 0.62, 6.5)))
+        zeilen = umbrechen(titel, "Inter-Medium.otf", gr, breite)
+        zeilen2 = umbrechen(untertitel, "Inter-Regular.otf", gr2, breite) if untertitel else []
+        zh, zh2 = round(gr * 1.15), round(gr2 * 1.3)
+        luecke = round(gr * 0.45) if zeilen2 else 0
         gesamt = len(zeilen) * zh + luecke + len(zeilen2) * zh2
-        passt = all(zeichnen.textlength(z, font=font) <= breite for z in zeilen)
+        passt = all(schrift("Inter-Medium.otf").breite(z, gr) <= breite for z in zeilen)
         if (passt and gesamt <= hoehe and len(zeilen) <= 4) or pt <= 7:
             break
         pt -= 0.5
+    texte: list[Text] = []
     y = y0 + (hoehe - gesamt) // 2
     for z in zeilen:
-        zeichnen.text((x0, y), z, font=font, fill=farbe)
+        texte.append(text_oben(x0, y, z, "Inter-Medium.otf", gr, farbe[:3], farbe[3]))
         y += zh
     y += luecke
     for z in zeilen2:
-        zeichnen.text((x0, y), z, font=font2, fill=farbe2)
+        texte.append(text_oben(x0, y, z, "Inter-Regular.otf", gr2, farbe2[:3], farbe2[3]))
         y += zh2
+    return texte
 
 
 def cover_einsetzen(flaeche: Image.Image, cover: Image.Image, x: int, y: int, kante: int) -> None:
@@ -165,11 +266,11 @@ def cover_einsetzen(flaeche: Image.Image, cover: Image.Image, x: int, y: int, ka
 
 def etikett(
     cover: Image.Image, titel: str, untertitel: str, bogen: Bogen, layout: str
-) -> Image.Image:
-    """Ein Etikett samt seitlicher Beschnittzugabe, im Bogen-Querformat."""
+) -> tuple[Image.Image, list[Text]]:
+    """Ein Etikett samt seitlicher Beschnittzugabe, im Bogen-Querformat; Text getrennt."""
     b, h, bx = px(bogen.breite), px(bogen.hoehe), px(BESCHNITT_X)
     farbe = grundfarbe(cover)
-    text, text2 = textfarben(farbe)
+    farben = textfarben(farbe)
     innen = px(3.2)
 
     if layout == "hoch":
@@ -177,23 +278,23 @@ def etikett(
         flaeche = Image.new("RGB", (h, b + 2 * bx), farbe)
         kante = h - 2 * innen
         cover_einsetzen(flaeche, cover, innen, bx + innen, kante)
-        textblock(
-            ImageDraw.Draw(flaeche),
+        texte = textblock(
             (innen + px(0.5), bx + kante + innen + px(1.5), h - innen, b + bx - innen),
-            titel, untertitel, (text, text2), max_pt=13,
+            titel, untertitel, farben, max_pt=13,
         )  # fmt: skip
-        return flaeche.rotate(90, expand=True)
+        # Punkt (x, y) landet nach rotate(90, expand) bei (y, Breite - x)
+        gedreht = [replace(t, x=t.y, y=h - t.x, drehung=90) for t in texte]
+        return flaeche.rotate(90, expand=True), gedreht
 
     flaeche = Image.new("RGB", (b + 2 * bx, h), farbe)
     kante = h - 2 * innen
     cover_einsetzen(flaeche, cover, bx + innen, innen, kante)
     links = bx + innen + kante + px(3.5)
-    textblock(
-        ImageDraw.Draw(flaeche),
+    texte = textblock(
         (links, innen + px(1), b + bx - innen, h - innen - px(1)),
-        titel, untertitel, (text, text2), max_pt=12,
+        titel, untertitel, farben, max_pt=12,
     )  # fmt: skip
-    return flaeche
+    return flaeche, texte
 
 
 def positionen(bogen: Bogen, dx: float, dy: float) -> list[tuple[int, int]]:
@@ -209,36 +310,63 @@ def positionen(bogen: Bogen, dx: float, dy: float) -> list[tuple[int, int]]:
 
 
 def bogen_setzen(
-    karten: list[Image.Image], bogen: Bogen, start: int, dx: float, dy: float
-) -> list[Image.Image]:
+    karten: list[tuple[Image.Image, list[Text]]], bogen: Bogen, start: int, dx: float, dy: float
+) -> list[Seite]:
     plaetze = positionen(bogen, dx, dy)
-    seiten: list[Image.Image] = []
+    seiten: list[Seite] = []
     platz = start - 1
-    for karte in karten:
+    for bild, texte in karten:
         if not seiten or platz >= len(plaetze):
-            seiten.append(Image.new("RGB", A4, "white"))
+            seiten.append(Seite(Image.new("RGB", A4, "white")))
             platz = platz if len(seiten) == 1 else 0
         x, y = plaetze[platz]
-        seiten[-1].paste(karte, (x - px(BESCHNITT_X), y))
+        x -= px(BESCHNITT_X)
+        assert seiten[-1].bild is not None
+        seiten[-1].bild.paste(bild, (x, y))
+        seiten[-1].texte += [replace(t, x=t.x + x, y=t.y + y) for t in texte]
         platz += 1
     return seiten
 
 
-def probe(bogen: Bogen, dx: float, dy: float) -> Image.Image:
-    """Umrisse aller Etiketten mit Mittelkreuz, zum Ausrichten auf Normalpapier."""
-    seite = Image.new("RGB", A4, "white")
-    zeichnen = ImageDraw.Draw(seite)
-    font = schrift("Inter-Regular.otf", 8)
+def probe(bogen: Bogen, dx: float, dy: float) -> Seite:
+    """Umrisse aller Etiketten mit Mittelkreuz, zum Ausrichten auf Normalpapier (rein vektor)."""
     b, h = px(bogen.breite), px(bogen.hoehe)
-    for i, (x, y) in enumerate(positionen(bogen, dx, dy), 1):
-        zeichnen.rounded_rectangle((x, y, x + b, y + h), px(bogen.radius), outline="black", width=2)
-        mx, my = x + b // 2, y + h // 2
-        zeichnen.line((mx - px(3), my, mx + px(3), my), fill="black", width=2)
-        zeichnen.line((mx, my - px(3), mx, my + px(3)), fill="black", width=2)
-        zeichnen.text((x + px(3), y + px(2.5)), str(i), font=font, fill="black")
+    plaetze = positionen(bogen, dx, dy)
+    schwarz = (0, 0, 0)
+    gr = round(pt_zu_px(8))
+    texte = [
+        text_oben(x + px(3), y + px(2.5), str(i), "Inter-Regular.otf", gr, schwarz)
+        for i, (x, y) in enumerate(plaetze, 1)
+    ]
     hinweis = f"Probe HERMA 5028 · Versatz x {dx:+.1f} mm, y {dy:+.1f} mm · 100 % drucken"
-    zeichnen.text((px(18.6), px(10)), hinweis, font=font, fill="black")
-    return seite
+    texte.append(text_oben(px(18.6), px(10), hinweis, "Inter-Regular.otf", gr, schwarz))
+
+    def zeichnen(c: canvas.Canvas, hoehe_pt: float) -> None:
+        k = 72 / DPI
+        c.setStrokeColorRGB(0, 0, 0)
+        c.setLineWidth(2 * k)
+        for x, y in plaetze:
+            c.roundRect(x * k, hoehe_pt - (y + h) * k, b * k, h * k, px(bogen.radius) * k, 1, 0)
+            mx, my = (x + b / 2) * k, hoehe_pt - (y + h / 2) * k
+            c.line(mx - px(3) * k, my, mx + px(3) * k, my)
+            c.line(mx, my - px(3) * k, mx, my + px(3) * k)
+
+    return Seite(None, texte, zeichnen)
+
+
+def pdf_schreiben(seiten: list[Seite], pfad: Path) -> None:
+    breite_pt, hoehe_pt = A4[0] * 72 / DPI, A4[1] * 72 / DPI
+    c = canvas.Canvas(str(pfad), pagesize=(breite_pt, hoehe_pt))
+    c.setTitle("Musikkarten-Etiketten")
+    for seite in seiten:
+        if seite.bild is not None:
+            c.drawImage(ImageReader(seite.bild), 0, 0, breite_pt, hoehe_pt)
+        if seite.zeichnen:
+            seite.zeichnen(c, hoehe_pt)
+        for t in seite.texte:
+            text_vektor(c, t, hoehe_pt)
+        c.showPage()
+    c.save()
 
 
 def main() -> int:
@@ -272,10 +400,14 @@ def main() -> int:
             karten += [karte] * a.kopien
         seiten = bogen_setzen(karten, bogen, a.start, a.versatz_x, a.versatz_y)
 
-    seiten[0].save(a.ausgabe, save_all=True, append_images=seiten[1:], resolution=DPI)
+    pdf_schreiben(seiten, a.ausgabe)
     if a.png:
-        for i, seite in enumerate(seiten, 1):
-            seite.save(a.ausgabe.with_name(f"{a.ausgabe.stem}-{i}.png"))
+        import pypdfium2  # nur für die Vorschau nötig  # noqa: PLC0415
+
+        pdf = pypdfium2.PdfDocument(str(a.ausgabe))
+        for i, seite in enumerate(pdf, 1):
+            vorschau = seite.render(scale=DPI / 72).to_pil()
+            vorschau.save(a.ausgabe.with_name(f"{a.ausgabe.stem}-{i}.png"))
     print(f"{a.ausgabe}: {len(seiten)} Seite(n)")
     return 0
 

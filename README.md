@@ -188,7 +188,8 @@ Abziehen der Karte wird die Stelle neu gemerkt.
 ## Etiketten für die Karten drucken
 
 `tools/kartenbogen.py` setzt Album-Cover auf Etikettenbögen HERMA 5028 (83,8 × 50,8 mm,
-10 pro A4-Bogen). Läuft auf dem Rechner, braucht nur Pillow (`pip install pillow`).
+10 pro A4-Bogen). Läuft auf dem Rechner und braucht `pip install pillow reportlab fonttools`
+(für `--png` zusätzlich `pypdfium2`).
 
 ```bash
 python3 tools/kartenbogen.py ~/Cover -o karten.pdf            # Cover links, Text rechts
@@ -199,7 +200,8 @@ python3 tools/kartenbogen.py --probe -o probe.pdf             # Umrisse zum Ausr
 
 Der Dateiname wird zum Text: `01 Puderzucker - Folge 3.jpg` = Titel „Puderzucker“,
 Untertitel „Folge 3“, die Nummer bestimmt nur die Reihenfolge. Die Hintergrundfarbe kommt
-aus dem Cover. Mit 100 % („Tatsächliche Größe“) drucken; passt die Probe nicht auf den
+aus dem Cover. Im PDF sind Cover und Hintergrund Pixelbilder (300 dpi), alle Texte sind
+Vektorkonturen (keine Schrift eingebettet, scharf in jeder Größe, ohne Kerning). Mit 100 % („Tatsächliche Größe“) drucken; passt die Probe nicht auf den
 Bogen, mit `--versatz-x`/`--versatz-y` (mm) nachjustieren.
 
 ## Bekannte Einschränkungen

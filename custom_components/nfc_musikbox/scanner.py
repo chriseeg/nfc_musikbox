@@ -574,9 +574,21 @@ class ReaderController:
     def _handle_player(self, event: Event[EventStateChangedData]) -> None:
         self._sync_session()
         old, new = event.data["old_state"], event.data["new_state"]
+        self._learn_duration(new)
         if _live_relevant(old) != _live_relevant(new):
             self._update_live()
         self._enforce_max_volume(event)
+
+    def _learn_duration(self, state: State | None) -> None:
+        """Dauer des laufenden Titels der aufliegenden Karte merken (Sonos nennt nur diese)."""
+        card = self._card_on_reader()
+        if card is None or state is None or state.state not in (STATE_PLAYING, STATE_PAUSED):
+            return
+        duration = state.attributes.get("media_duration")
+        size = state.attributes.get("queue_size")
+        q = queue_position(state)
+        if isinstance(duration, int | float) and isinstance(size, int) and q:
+            self.store.learn_duration(card.tag_id, q, round(duration), size)
 
     @callback
     def _enforce_max_volume(self, event: Event[EventStateChangedData]) -> None:
@@ -629,7 +641,7 @@ class ReaderController:
         ):
             notifier.live_end(self.reader)
             return
-        message, data = self._live_content(state)
+        message, data = self._live_content(card, state)
         notifier.live_update(self.reader, card.name, message, data)
 
     def _stop_window(self) -> tuple[datetime, float] | None:
@@ -645,7 +657,7 @@ class ReaderController:
             windows.append((self._sleep_deadline, self.settings.sleep_timer * 60.0))
         return min(windows, key=lambda w: w[0]) if windows else None
 
-    def _live_content(self, state: State) -> tuple[str, dict[str, Any]]:
+    def _live_content(self, card: Card, state: State) -> tuple[str, dict[str, Any]]:
         playing = state.state == STATE_PLAYING
         q = queue_position(state)
         size = state.attributes.get("queue_size")
@@ -656,6 +668,7 @@ class ReaderController:
         parts = [None if playing else "Pausiert", chapter, media_title(state)]
         message = " · ".join(p for p in parts if p) or "Läuft"
         data: dict[str, Any] = {}
+        left = self._content_remaining(card, state)
         window = self._stop_window()
         if window is not None:
             end, total = window
@@ -668,9 +681,56 @@ class ReaderController:
             }
             if playing:
                 data |= {"chronometer": True, "when": round(end.timestamp())}
+            if left is not None:
+                message += f" · {_fmt_left(*left)}"
+        elif left is not None:
+            seconds, approx = left
+            message += f" · {_fmt_left(seconds, approx)}"
+            data = {
+                "progress": seconds,
+                "progress_max": max(seconds, self._content_total(card, state) or seconds),
+                "progress_bar_direction": "decreasing",
+                "critical_text": _fmt_left(seconds, approx),
+            }
+            if playing:
+                data |= {
+                    "chronometer": True,
+                    "when": round(dt_util.utcnow().timestamp()) + seconds,
+                }
         elif q and isinstance(size, int) and size > 1:
             data = {"progress": q, "progress_max": size}
         return message, data
+
+    def _content_remaining(self, card: Card, state: State) -> tuple[int, bool] | None:
+        """Restdauer des Hörspiels in Sekunden und ob sie geschätzt ist.
+
+        Nur aus gelernten Dauern; None bei Zufallswiedergabe oder solange nichts bekannt ist.
+        """
+        durations = self.store.durations.get(card.tag_id)
+        size = state.attributes.get("queue_size")
+        duration = state.attributes.get("media_duration")
+        q = queue_position(state)
+        if (
+            durations is None
+            or state.attributes.get("shuffle")
+            or not isinstance(size, int)
+            or not isinstance(duration, int | float)
+            or not q
+        ):
+            return None
+        later = durations.remaining_after(q, size)
+        if later is None:
+            return None
+        current = max(0, round(duration - current_position(state)))
+        return current + later[0], later[1]
+
+    def _content_total(self, card: Card, state: State) -> int | None:
+        durations = self.store.durations.get(card.tag_id)
+        size = state.attributes.get("queue_size")
+        if durations is None or not isinstance(size, int):
+            return None
+        first = durations.remaining_after(0, size)
+        return first[0] if first else None
 
     # ---------- Tasten ----------
 
@@ -774,6 +834,12 @@ class ReaderController:
         await self.player.async_restart()
 
 
+def _fmt_left(seconds: int, approx: bool) -> str:
+    minutes = max(1, math.ceil(seconds / 60))
+    text = f"{minutes // 60} h {minutes % 60:02d} min" if minutes >= 60 else f"{minutes} min"
+    return f"noch {'~' if approx else ''}{text}"
+
+
 def _live_relevant(state: State | None) -> tuple[Any, ...]:
     """Was die Live-Aktivität zeigt; Positions-Updates allein lösen kein Update aus."""
     if state is None:
@@ -783,6 +849,7 @@ def _live_relevant(state: State | None) -> tuple[Any, ...]:
         state.attributes.get("queue_position"),
         state.attributes.get("queue_size"),
         state.attributes.get("media_title"),
+        state.attributes.get("media_duration"),
     )
 
 

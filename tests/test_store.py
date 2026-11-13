@@ -8,7 +8,7 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from custom_components.nfc_musikbox.store import Card, CardStore, Position
+from custom_components.nfc_musikbox.store import Card, CardStore, Durations, Position
 
 MEDIA = {
     "media_content_id": "FV:2/46",
@@ -79,3 +79,32 @@ async def test_remove_card_drops_position(hass: HomeAssistant) -> None:
     await store.async_remove_card("A")
     assert store.cards == {}
     assert store.positions == {}
+
+
+def test_durations_learn_and_remaining() -> None:
+    dur = Durations()
+    assert dur.remaining_after(1, 3) is None
+    assert dur.learn(1, 600, 3)
+    assert not dur.learn(1, 601, 3)  # Messrauschen unter 2 s
+    dur.learn(3, 300, 3)
+    assert dur.remaining_after(1, 3) == (750, True)  # Titel 2 geschätzt aus dem Mittel
+    dur.learn(2, 900, 3)
+    assert dur.remaining_after(1, 3) == (1200, False)
+    assert dur.remaining_after(3, 3) == (0, False)
+    # andere Queue-Länge: neu anfangen
+    assert dur.learn(1, 100, 5)
+    assert dur.d == {1: 100}
+    assert dur.remaining_after(1, 3) is None
+
+
+async def test_durations_roundtrip(hass: HomeAssistant, hass_storage: dict[str, Any]) -> None:
+    store = CardStore(hass)
+    await store.async_load()
+    await store.async_set_card(Card(tag_id="A", name="A"))
+    assert store.learn_duration("A", 2, 700, 4)
+    await store.async_flush()
+    again = CardStore(hass)
+    await again.async_load()
+    assert again.durations["A"].d == {2: 700}
+    await again.async_remove_card("A")
+    assert "A" not in again.durations

@@ -387,6 +387,60 @@ async def test_live_activity_chapter_bar_without_limits(
     assert "chronometer" not in data
 
 
+async def test_live_activity_learns_durations(
+    hass: HomeAssistant,
+    player: FakeSonos,
+    pushes: list[dict[str, Any]],
+    clock: Clock,
+) -> None:
+    """Dauern kommen nur pro Titel; die Restdauer setzt sich aus gelernten zusammen."""
+    await setup(hass, live_activity=True)
+    await card(hass, A)
+    for q, length in ((1, 600), (2, 900), (3, 300)):
+        player.set_playing(q=q, pos=0)
+        hass.states.async_set(
+            PLAYER,
+            "playing",
+            {**hass.states.get(PLAYER).attributes, "queue_size": 3, "media_duration": length},
+        )
+        await settle(hass)
+    # Zurück auf Titel 1: Rest = 600 + 900 + 300 s = 30 min, exakt (kein "~")
+    player.set_playing(q=1, pos=0)
+    hass.states.async_set(
+        PLAYER,
+        "playing",
+        {**hass.states.get(PLAYER).attributes, "queue_size": 3, "media_duration": 600},
+    )
+    await settle(hass)
+    await clock.tick(hass, seconds=4)
+    await settle(hass)
+    last = [p for p in pushes if p.get("data", {}).get("live_update")][-1]
+    assert "noch 30 min" in last["message"]
+    assert last["data"]["chronometer"] is True
+    assert last["data"]["progress_max"] == 1800
+
+
+async def test_live_activity_estimates_unknown_titles(
+    hass: HomeAssistant,
+    player: FakeSonos,
+    pushes: list[dict[str, Any]],
+    clock: Clock,
+) -> None:
+    await setup(hass, live_activity=True)
+    await card(hass, A)
+    player.set_playing(q=1, pos=0)
+    hass.states.async_set(
+        PLAYER,
+        "playing",
+        {**hass.states.get(PLAYER).attributes, "queue_size": 3, "media_duration": 600},
+    )
+    await settle(hass)
+    await clock.tick(hass, seconds=4)
+    await settle(hass)
+    last = [p for p in pushes if p.get("data", {}).get("live_update")][-1]
+    assert "noch ~30 min" in last["message"]
+
+
 async def test_live_activity_off_by_default(
     hass: HomeAssistant,
     player: FakeSonos,

@@ -336,7 +336,7 @@ async def test_extend_service(hass: HomeAssistant, player: FakeSonos) -> None:
 # ---------- Live-Aktivität ----------
 
 
-async def test_live_activity_countdown_and_end(
+async def test_live_activity_ignores_limit_and_ends(
     hass: HomeAssistant,
     player: FakeSonos,
     pushes: list[dict[str, Any]],
@@ -357,9 +357,9 @@ async def test_live_activity_countdown_and_end(
     assert first["title"] == "Hörspiel A"
     assert first["message"].startswith("Kapitel 2 von 5")
     data = first["data"]
-    assert data["progress_max"] == 30 * 60
-    assert data["progress_bar_direction"] == "decreasing"
-    assert data["chronometer"] is True
+    # Der Balken zeigt nie das Limit, sondern das Hörspiel (hier ohne bekannte Dauern: Kapitel)
+    assert (data["progress"], data["progress_max"]) == (2, 5)
+    assert "chronometer" not in data
     assert "silent" not in data
 
     await card(hass, "none")

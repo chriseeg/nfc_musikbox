@@ -644,19 +644,6 @@ class ReaderController:
         message, data = self._live_content(card, state)
         notifier.live_update(self.reader, card.name, message, data)
 
-    def _stop_window(self) -> tuple[datetime, float] | None:
-        """Zeitpunkt, an dem die Wiedergabe endet (Hörzeit/Schlaf-Timer), und Gesamtdauer."""
-        windows: list[tuple[datetime, float]] = []
-        now = dt_util.utcnow()
-        if self.limits is not None:
-            remaining = self.limits.remaining_seconds()
-            allowed = self.limits.allowed_seconds
-            if remaining is not None and allowed:
-                windows.append((now + timedelta(seconds=remaining), allowed))
-        if self._sleep_deadline is not None:
-            windows.append((self._sleep_deadline, self.settings.sleep_timer * 60.0))
-        return min(windows, key=lambda w: w[0]) if windows else None
-
     def _live_content(self, card: Card, state: State) -> tuple[str, dict[str, Any]]:
         playing = state.state == STATE_PLAYING
         q = queue_position(state)
@@ -669,21 +656,7 @@ class ReaderController:
         message = " · ".join(p for p in parts if p) or "Läuft"
         data: dict[str, Any] = {}
         left = self._content_remaining(card, state)
-        window = self._stop_window()
-        if window is not None:
-            end, total = window
-            remaining = max(0.0, (end - dt_util.utcnow()).total_seconds())
-            data = {
-                "progress": round(remaining),
-                "progress_max": max(1, round(total)),
-                "progress_bar_direction": "decreasing",
-                "critical_text": f"noch {math.ceil(remaining / 60)} min",
-            }
-            if playing:
-                data |= {"chronometer": True, "when": round(end.timestamp())}
-            if left is not None:
-                message += f" · {_fmt_left(*left)}"
-        elif left is not None:
+        if left is not None:
             seconds, approx = left
             message += f" · {_fmt_left(seconds, approx)}"
             data = {

@@ -150,6 +150,55 @@ class Position:
 
 
 @dataclass(slots=True)
+class Durations:
+    """Beim Hören gelernte Titeldauern einer Karte (Sekunden je Queue-Position).
+
+    Sonos nennt die Dauer nur für den laufenden Titel. Jeder Titel, der einmal
+    gespielt hat, wird hier gemerkt; ändert sich die Queue-Länge, beginnt die Karte neu.
+    """
+
+    n: int = 0  # Queue-Länge beim Lernen
+    d: dict[int, int] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Durations:
+        raw = data.get("d")
+        return cls(
+            n=int(data.get("n", 0)),
+            d={int(q): int(s) for q, s in raw.items() if int(s) > 0}
+            if isinstance(raw, dict)
+            else {},
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"n": self.n, "d": {str(q): s for q, s in self.d.items()}}
+
+    def learn(self, q: int, seconds: int, size: int) -> bool:
+        """Dauer eines Titels merken; True, wenn sich etwas geändert hat."""
+        if q < 1 or seconds < 1:
+            return False
+        changed = False
+        if size != self.n:
+            self.n, self.d, changed = size, {}, True
+        if abs(self.d.get(q, 0) - seconds) > 2:
+            self.d[q] = seconds
+            changed = True
+        return changed
+
+    def remaining_after(self, q: int, size: int) -> tuple[int, bool] | None:
+        """Dauer aller Titel nach Position q; zweiter Wert True, wenn geschätzt.
+
+        None, solange noch kein Titel bekannt ist oder die Queue-Länge nicht passt.
+        """
+        if not self.d or size < 1 or size != self.n:
+            return None
+        mean = sum(self.d.values()) / len(self.d)
+        later = range(q + 1, size + 1)
+        total = sum(self.d.get(i, mean) for i in later)
+        return round(total), any(i not in self.d for i in later)
+
+
+@dataclass(slots=True)
 class Card:
     """Eine NFC-Karte mit ihrem Medium."""
 
@@ -194,6 +243,7 @@ class CardStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.cards: dict[str, Card] = {}
         self.positions: dict[str, Position] = {}
+        self.durations: dict[str, Durations] = {}
         self.seen: dict[str, SeenTag] = {}
         self.reader_settings: dict[str, ReaderSettings] = {}
         self.parental = ParentalSettings()
@@ -217,6 +267,12 @@ class CardStore:
                 self.positions[tag_id] = Position.from_dict(raw)
             except TypeError, ValueError:
                 _LOGGER.warning("Ungültige Position für %s ignoriert: %s", tag_id, raw)
+        self.durations = {}
+        for tag_id, raw in data.get("durations", {}).items():
+            try:
+                self.durations[tag_id] = Durations.from_dict(raw)
+            except AttributeError, TypeError, ValueError:
+                _LOGGER.warning("Ungültige Dauern für %s ignoriert", tag_id)
         self.seen = {}
         for tag_id, raw in data.get("seen", {}).items():
             if isinstance(raw, dict) and isinstance(raw.get("last"), str):
@@ -239,6 +295,7 @@ class CardStore:
         return {
             "cards": [asdict(card) for card in self.cards.values()],
             "positions": {tag: asdict(pos) for tag, pos in self.positions.items()},
+            "durations": {tag: dur.to_dict() for tag, dur in self.durations.items()},
             "seen": {tag: asdict(seen) for tag, seen in self.seen.items()},
             "reader_settings": {r: asdict(rs) for r, rs in self.reader_settings.items()},
             "parental": asdict(self.parental),
@@ -295,6 +352,7 @@ class CardStore:
         if self.cards.pop(tag_id, None) is None:
             return
         self.positions.pop(tag_id, None)
+        self.durations.pop(tag_id, None)
         await self.async_save()
         self._notify(StoreEvent.CARD_REMOVED, tag_id)
 
@@ -306,6 +364,14 @@ class CardStore:
             self.positions[tag_id] = position
         self._schedule_save()
         self._notify(StoreEvent.POSITION, tag_id)
+
+    def learn_duration(self, tag_id: str, q: int, seconds: int, size: int) -> bool:
+        """Titeldauer einer Karte lernen; gespeichert wird gebündelt, ohne Listener-Meldung."""
+        durations = self.durations.setdefault(tag_id, Durations())
+        if not durations.learn(q, seconds, size):
+            return False
+        self._schedule_save()
+        return True
 
     def get_reader_settings(self, reader_id: str) -> ReaderSettings:
         return self.reader_settings.get(reader_id) or ReaderSettings()

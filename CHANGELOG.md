@@ -4,6 +4,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Restdauer in der Live-Aktivität**: Sonos nennt nur die Dauer des laufenden Titels. Die
+  Integration lernt die Dauer jedes Titels beim Hören (pro Karte, Queue-Position) und zeigt
+  „noch 35 min“ bzw. beim ersten Durchlauf „noch ~35 min“ (unbekannte Titel geschätzt).
+  Balken und Chronometer zeigen immer das Hörspiel (nicht mehr das Tageslimit bzw. den
+  Schlaf-Timer); solange keine Dauern bekannt sind, der Kapitelbalken. Bei Zufallswiedergabe
+  keine Restdauer. Keine zusätzlichen Pushes.
+
 ## [0.9.0]
 
 ### Hinzugefügt

@@ -11,8 +11,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ### Geändert
 - **Firmware**: Die Taster-LEDs (GPIO16/17) sind jetzt über die Substitution `led_inverted`
-  umschaltbar. Vorgabe `true` für LEDs zwischen 3V3 und GPIO (aktiv-low), `false` für
-  GPIO → Widerstand → LED → GND.
+  umschaltbar. Vorgabe `false` für
+  GPIO → Widerstand → LED → GND, `true` für LEDs zwischen 3V3 und GPIO (aktiv-low).
 
 ### Hinzugefügt
 - **Restdauer in der Live-Aktivität**: Sonos nennt nur die Dauer des laufenden Titels. Die

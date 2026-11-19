@@ -13,6 +13,9 @@ substitutions:
   friendly_name: NFC Musikbox
   remove_delay: 2s     # so lange darf die Karte "wackeln", bevor sie als entfernt gilt
   hold_time: 800ms     # so lange gedrückt halten = lang
+  # LEDs der Taster liegen zwischen 3V3 und GPIO (Vorwiderstand in Reihe) = aktiv-low.
+  # Bei Verdrahtung GPIO -> Widerstand -> LED -> GND auf "false" setzen.
+  led_inverted: "true"
 
 esphome:
   name: ${name}
@@ -205,10 +208,14 @@ button:
 # ---------- LEDs (PWM) ----------
 output:
   - platform: ledc
-    pin: GPIO16
+    pin:
+      number: GPIO16
+      inverted: ${led_inverted}
     id: out_led_back
   - platform: ledc
-    pin: GPIO17
+    pin:
+      number: GPIO17
+      inverted: ${led_inverted}
     id: out_led_play
 
 light:

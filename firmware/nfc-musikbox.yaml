@@ -3,8 +3,8 @@
 # Tonie-Logik: Der Reader meldet nur, WELCHE Karte gerade liegt ("Karte auf dem Reader").
 # Alles Weitere (Abspielen, Pause beim Entfernen, Fortsetzen) macht Home Assistant.
 #
-# Taster:  GPIO25 = 30 s zurück (kurz) / von vorne (lang)   LED GPIO16
-#          GPIO26 = Wiedergabe/Pause                         LED GPIO17
+# Taster:  GPIO25 = Zurück-Taste entfernt (neue Logik folgt)  LED GPIO16
+#          GPIO26 = Wiedergabe/Pause                           LED GPIO17
 # Der Reader kennt keinen Lautsprecher. Er nimmt nur den Wiedergabestatus von
 # Home Assistant entgegen (API-Aktion set_playback_state) und zeigt ihn per LED.
 
@@ -12,7 +12,6 @@ substitutions:
   name: nfc-musikbox
   friendly_name: NFC Musikbox
   remove_delay: 2s     # so lange darf die Karte "wackeln", bevor sie als entfernt gilt
-  hold_time: 800ms     # so lange gedrückt halten = lang
   # LEDs der Taster liegen zwischen 3V3 und GPIO (Vorwiderstand in Reihe) = aktiv-low.
   # Bei Verdrahtung GPIO -> Widerstand -> LED -> GND auf "false" setzen.
   led_inverted: "true"
@@ -188,10 +187,6 @@ text_sensor:
 # ---------- Tasten-Ereignisse für Home Assistant ----------
 event:
   - platform: template
-    id: ev_back
-    name: "Ereignis Taste Zurück"
-    event_types: ["kurz", "lang"]
-  - platform: template
     id: ev_play
     name: "Ereignis Taste Play/Pause"
     event_types: ["kurz"]
@@ -245,30 +240,6 @@ binary_sensor:
     id: tag_present
     name: "Karte liegt auf"
 
-  # 30 s zurück (kurz) / von vorne (lang gedrückt). Die Aktion selbst führt Home Assistant aus.
-  - platform: gpio
-    id: btn_back
-    name: "Taste Zurück"
-    pin:
-      number: GPIO25
-      mode: INPUT_PULLUP
-      inverted: true
-    filters:
-      - delayed_on: 20ms
-      - delayed_off: 20ms
-    on_press:
-      - script.execute: back_hold
-    on_release:
-      - if:
-          condition:
-            script.is_running: back_hold
-          then:
-            - script.stop: back_hold
-            - event.trigger:
-                id: ev_back
-                event_type: kurz
-            - script.execute: flash_back
-
   # Wiedergabe/Pause. Die LED folgt dem Wiedergabestatus aus Home Assistant.
   - platform: gpio
     id: btn_play
@@ -300,16 +271,6 @@ script:
           state: false
       - script.execute: update_play_led
 
-  # Lang gedrückt: nach hold_time Ereignis "lang" senden
-  - id: back_hold
-    mode: restart
-    then:
-      - delay: ${hold_time}
-      - event.trigger:
-          id: ev_back
-          event_type: lang
-      - script.execute: flash_back_long
-
   # Ohne Karte alles aus. Mit Karte: Zurück-LED schwach an,
   # Play-LED: playing = an, paused = pulsieren, sonst schwach.
   - id: update_play_led
@@ -340,25 +301,6 @@ script:
                         - light.turn_on: { id: led_play, effect: "Pulse" }
                       else:
                         - light.turn_on: { id: led_play, brightness: 20%, effect: "None" }
-
-  - id: flash_back
-    mode: restart
-    then:
-      - light.turn_on: { id: led_back, brightness: 100% }
-      - delay: 250ms
-      - script.execute: update_play_led
-
-  - id: flash_back_long
-    mode: restart
-    then:
-      - repeat:
-          count: 2
-          then:
-            - light.turn_on: { id: led_back, brightness: 100%, transition_length: 0s }
-            - delay: 120ms
-            - light.turn_off: { id: led_back, transition_length: 0s }
-            - delay: 120ms
-      - script.execute: update_play_led
 
   # Gesperrt: beide LEDs 3× langsam blinken (unterscheidbar von der Scan-Quittung)
   - id: lock_feedback

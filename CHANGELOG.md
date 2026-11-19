@@ -4,6 +4,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Entfernt
+- **Firmware**: Die Zurück-Taste (GPIO25: 30 s zurück / von vorne) ist entfernt, samt Ereignis
+  „Taste Zurück“. Die LED Zurück bleibt. Die Integration findet das Ereignis nicht mehr und
+  meldet das nur als Warnung; eine neue Logik folgt.
+
 ### Geändert
 - **Firmware**: Die Taster-LEDs (GPIO16/17) sind jetzt über die Substitution `led_inverted`
   umschaltbar. Vorgabe `true` für LEDs zwischen 3V3 und GPIO (aktiv-low), `false` für

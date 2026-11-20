@@ -3,8 +3,10 @@
 # Tonie-Logik: Der Reader meldet nur, WELCHE Karte gerade liegt ("Karte auf dem Reader").
 # Alles Weitere (Abspielen, Pause beim Entfernen, Fortsetzen) macht Home Assistant.
 #
-# Taster:  GPIO25 = Zurück-Taste entfernt (neue Logik folgt)  LED GPIO16
-#          GPIO26 = Wiedergabe/Pause                           LED GPIO17
+# Taster:  GPIO26 = Wiedergabe/Pause                           LED GPIO17
+#          Die Zurück-Taste samt LED ist entfernt (neue Logik folgt).
+# Reed:    GPIO16 = Reed-Schalter (gegen GND). Standby: Karte gilt als entfernt,
+#          Home Assistant pausiert wie beim Entfernen, LEDs und Taste sind aus.
 # Der Reader kennt keinen Lautsprecher. Er nimmt nur den Wiedergabestatus von
 # Home Assistant entgegen (API-Aktion set_playback_state) und zeigt ihn per LED.
 
@@ -12,9 +14,11 @@ substitutions:
   name: nfc-musikbox
   friendly_name: NFC Musikbox
   remove_delay: 2s     # so lange darf die Karte "wackeln", bevor sie als entfernt gilt
-  # LEDs der Taster liegen zwischen 3V3 und GPIO (Vorwiderstand in Reihe) = aktiv-low.
-  # Bei Verdrahtung GPIO -> Widerstand -> LED -> GND auf "false" setzen.
-  led_inverted: "true"
+  # "false": LED an GPIO -> Widerstand -> LED -> GND (leuchtet bei High).
+  # "true": LED zwischen 3V3 und GPIO (aktiv-low).
+  led_inverted: "false"
+  # "true": Magnet am Reed = Standby, "false": Magnet am Reed = Betrieb
+  reed_standby_bei_magnet: "true"
 
 esphome:
   name: ${name}
@@ -62,7 +66,7 @@ api:
       then:
         - if:
             condition:
-              # Kindersicherung: Karte gesperrt (Ruhezeit, Schlaf-Timer). Status bleibt unverändert.
+              # Kindersicherung: Karte gesperrt (Tageslimit, Schlaf-Timer). Status bleibt unverändert.
               lambda: 'return player_state == "locked";'
             then:
               - script.execute: lock_feedback
@@ -104,35 +108,39 @@ pn532_i2c:
   update_interval: 1s
   on_tag:
     then:
-      # Karte (wieder) erkannt: ein ausstehendes "entfernt" abbrechen
-      - script.stop: tag_gone
-      # Nur ein echtes Einlegen oder ein Kartenwechsel wird gemeldet,
-      # kurzes Wackeln derselben Karte nicht.
       - if:
           condition:
-            lambda: 'return id(current_tag).state != x;'
+            binary_sensor.is_off: standby
           then:
-            - text_sensor.template.publish:
-                id: current_tag
-                state: !lambda 'return x;'
-            - homeassistant.tag_scanned: !lambda 'return x;'
-            - script.execute: tag_feedback
-            - lambda: 'id(scan_count)++;'
-            - sensor.template.publish:
-                id: scan_count_sensor
-                state: !lambda 'return id(scan_count);'
-            - text_sensor.template.publish:
-                id: last_tag_id
-                state: !lambda 'return x;'
-            - text_sensor.template.publish:
-                id: last_tag_time
-                state: !lambda |-
-                  auto t = id(ha_time).now();
-                  if (!t.is_valid()) return std::string("keine Uhrzeit");
-                  return t.strftime("%d.%m. %H:%M:%S");
-            - binary_sensor.template.publish:
-                id: tag_present
-                state: true
+            # Karte (wieder) erkannt: ein ausstehendes "entfernt" abbrechen
+            - script.stop: tag_gone
+            # Nur ein echtes Einlegen oder ein Kartenwechsel wird gemeldet,
+            # kurzes Wackeln derselben Karte nicht.
+            - if:
+                condition:
+                  lambda: 'return id(current_tag).state != x;'
+                then:
+                  - text_sensor.template.publish:
+                      id: current_tag
+                      state: !lambda 'return x;'
+                  - homeassistant.tag_scanned: !lambda 'return x;'
+                  - script.execute: tag_feedback
+                  - lambda: 'id(scan_count)++;'
+                  - sensor.template.publish:
+                      id: scan_count_sensor
+                      state: !lambda 'return id(scan_count);'
+                  - text_sensor.template.publish:
+                      id: last_tag_id
+                      state: !lambda 'return x;'
+                  - text_sensor.template.publish:
+                      id: last_tag_time
+                      state: !lambda |-
+                        auto t = id(ha_time).now();
+                        if (!t.is_valid()) return std::string("keine Uhrzeit");
+                        return t.strftime("%d.%m. %H:%M:%S");
+                  - binary_sensor.template.publish:
+                      id: tag_present
+                      state: true
   on_tag_removed:
     then:
       - script.execute: tag_gone
@@ -204,22 +212,11 @@ button:
 output:
   - platform: ledc
     pin:
-      number: GPIO16
-      inverted: ${led_inverted}
-    id: out_led_back
-  - platform: ledc
-    pin:
       number: GPIO17
       inverted: ${led_inverted}
     id: out_led_play
 
 light:
-  - platform: monochromatic
-    output: out_led_back
-    id: led_back
-    name: "LED Zurück"
-    restore_mode: ALWAYS_OFF
-    default_transition_length: 100ms
   - platform: monochromatic
     output: out_led_play
     id: led_play
@@ -240,6 +237,29 @@ binary_sensor:
     id: tag_present
     name: "Karte liegt auf"
 
+  # Reed-Schalter (Schließer gegen GND). Ob der Magnet Standby oder Betrieb bedeutet,
+  # steht in reed_standby_bei_magnet. Standby: Karte sofort als entfernt melden.
+  - platform: gpio
+    id: reed
+    name: "Reed-Schalter"
+    entity_category: diagnostic
+    pin:
+      number: GPIO16
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 50ms
+      - delayed_off: 50ms
+    on_state:
+      - binary_sensor.template.publish:
+          id: standby
+          state: !lambda 'return x == ${reed_standby_bei_magnet};'
+      - script.execute: standby_aenderung
+
+  - platform: template
+    id: standby
+    name: "Standby"
+
   # Wiedergabe/Pause. Die LED folgt dem Wiedergabestatus aus Home Assistant.
   - platform: gpio
     id: btn_play
@@ -252,9 +272,13 @@ binary_sensor:
       - delayed_on: 20ms
       - delayed_off: 20ms
     on_press:
-      - event.trigger:
-          id: ev_play
-          event_type: kurz
+      - if:
+          condition:
+            binary_sensor.is_off: standby
+          then:
+            - event.trigger:
+                id: ev_play
+                event_type: kurz
 
 # ---------- Logik ----------
 script:
@@ -271,19 +295,35 @@ script:
           state: false
       - script.execute: update_play_led
 
-  # Ohne Karte alles aus. Mit Karte: Zurück-LED schwach an,
+  # Standby an: Karte als entfernt melden (Home Assistant pausiert). Standby aus: die
+  # noch liegende Karte meldet der PN532 beim nächsten Lesen von selbst wieder.
+  - id: standby_aenderung
+    mode: restart
+    then:
+      - if:
+          condition:
+            binary_sensor.is_on: standby
+          then:
+            - script.stop: tag_gone
+            - text_sensor.template.publish:
+                id: current_tag
+                state: "none"
+            - binary_sensor.template.publish:
+                id: tag_present
+                state: false
+      - script.execute: update_play_led
+
+  # Ohne Karte oder im Standby alles aus.
   # Play-LED: playing = an, paused = pulsieren, sonst schwach.
   - id: update_play_led
     mode: restart
     then:
       - if:
           condition:
-            lambda: 'return id(current_tag).state == "none" || id(current_tag).state.empty();'
+            lambda: 'return id(standby).state || id(current_tag).state == "none" || id(current_tag).state.empty();'
           then:
             - light.turn_off: led_play
-            - light.turn_off: led_back
           else:
-            - light.turn_on: { id: led_back, brightness: 12% }
             - if:
                 condition:
                   text_sensor.state:
@@ -302,7 +342,7 @@ script:
                       else:
                         - light.turn_on: { id: led_play, brightness: 20%, effect: "None" }
 
-  # Gesperrt: beide LEDs 3× langsam blinken (unterscheidbar von der Scan-Quittung)
+  # Gesperrt: LED 3× langsam blinken (unterscheidbar von der Scan-Quittung)
   - id: lock_feedback
     mode: restart
     then:
@@ -310,11 +350,9 @@ script:
       - repeat:
           count: 3
           then:
-            - light.turn_on: { id: led_back, brightness: 100%, transition_length: 0s }
             - light.turn_on: { id: led_play, effect: "None" }
             - light.turn_on: { id: led_play, brightness: 100%, transition_length: 0s }
             - delay: 300ms
-            - light.turn_off: { id: led_back, transition_length: 0s }
             - light.turn_off: { id: led_play, transition_length: 0s }
             - delay: 300ms
       - script.execute: update_play_led
@@ -326,11 +364,9 @@ script:
       - repeat:
           count: 2
           then:
-            - light.turn_on: { id: led_back, brightness: 100%, transition_length: 0s }
             - light.turn_on: { id: led_play, effect: "None" }
             - light.turn_on: { id: led_play, brightness: 100%, transition_length: 0s }
             - delay: 120ms
-            - light.turn_off: { id: led_back, transition_length: 0s }
             - light.turn_off: { id: led_play, transition_length: 0s }
             - delay: 120ms
       - script.execute: update_play_led

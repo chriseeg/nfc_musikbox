@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-21
+
 ### Hinzugefügt
 - **Firmware**: Reed-Schalter an GPIO16 (Pull-up, gegen GND) als Standby-Schalter. Im Standby
   meldet der Reader die Karte als entfernt (Pause wie beim Entfernen), LEDs und Taste Play/Pause

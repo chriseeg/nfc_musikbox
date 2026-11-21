@@ -75,6 +75,8 @@
   .x{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--mute);--mdc-icon-size:20px}
   .empty{text-align:center;padding:40px 20px;color:var(--mute);border:2px dashed var(--line);border-radius:20px;--mdc-icon-size:44px}
   .empty b{display:block;color:var(--primary-text-color);font-size:17px;margin:10px 0 6px}
+  .info{display:flex;align-items:center;gap:10px;background:var(--bg2);padding:12px 14px;border-radius:14px;margin-bottom:14px;font-size:14px;color:var(--mute)}
+  .info b{color:var(--primary-text-color)}
   .warn{background:color-mix(in srgb,var(--bad) 10%,var(--card));border:1px solid var(--bad);padding:12px 14px;border-radius:14px;margin-bottom:14px;font-size:14px}
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
   .overlay.top2{z-index:30}
@@ -249,13 +251,24 @@
       const rd = this.readers.map((r) => {
         const st = r.card_sensor && this._hass.states[r.card_sensor];
         const pl = this._hass.states[r.player];
-        return `${st ? st.state : ''}|${pl ? pl.state : ''}`;
+        return `${st ? st.state : ''}|${pl ? pl.state : ''}|${this._standby(r)}`;
       }).join(';');
       return `${tags}#${rd}`;
     }
     _online(r) {
       const st = r.card_sensor && this._hass.states[r.card_sensor];
       return !!st && st.state !== 'unavailable';
+    }
+    // Deckel zu (Firmware v5): true/false, null ohne Reed-Schalter oder offline
+    _standby(r) {
+      const st = r.standby_sensor && this._hass.states[r.standby_sensor];
+      if (!st || (st.state !== 'on' && st.state !== 'off')) return null;
+      return st.state === 'on';
+    }
+    _lidChip(r) {
+      const sb = this._standby(r);
+      if (sb === null || !this._online(r)) return '';
+      return sb ? `<span class="chip">${ic('sleep')}Deckel zu · Standby</span>` : `<span class="chip on">${ic('package-variant')}Deckel offen</span>`;
     }
     _offlineSince(r) {
       const st = r.card_sensor && this._hass.states[r.card_sensor];
@@ -329,6 +342,9 @@
       this.readers.filter((r) => r.ready && !this._online(r)).forEach((r) => {
         h += `<div class="warn">${ic('lan-disconnect')} <b>${esc(r.title)} ist nicht verbunden</b>${this._offlineSince(r)}. Karten und Tasten reagieren erst wieder, wenn das Lesegerät Strom und WLAN hat.</div>`;
       });
+      this.readers.filter((r) => r.ready && this._online(r) && this._standby(r)).forEach((r) => {
+        h += `<div class="info">${ic('sleep')}<span><b>${esc(r.title)}: Deckel zu</b> · Standby. Die Musik ist pausiert, Karte und Taste ruhen, bis der Deckel aufgeht.</span></div>`;
+      });
       if (this.hasLimits) {
         h += `<div class="row usage ${this._limitReached() ? 'hit' : ''}"><div class="head">${ic('shield-account')}<b>Heute: ${esc(this._usageText())}</b></div>
           ${this._limitReached() ? '<p class="hint">Tageslimit erreicht. Karten mit Tageslimit starten erst nach deiner Freigabe.</p>' : ''}
@@ -381,6 +397,7 @@
         h += `<div class="row"><div class="head">${ic('nfc-variant')}<b>${esc(r.title)}</b></div>
           <div class="chips"><span class="chip">${ic('speaker')}${esc(r.player_name)}${pl ? ` · ${esc(PLAYER_STATE[pl.state] || pl.state)}` : ''}</span>
             <span class="chip ${r.supports_restore ? 'on' : ''}">${ic(r.supports_restore ? 'bookmark-check-outline' : 'restart')}${r.supports_restore ? 'Fortsetzen an der Stelle' : 'nur von vorne'}</span>
+            ${this._lidChip(r)}
             ${tag && !NO_TAG.has(tag) ? `<span class="chip on">${ic('cards-outline')}${esc(card ? card.name : tag)}</span>` : ''}</div>
           ${this.slider(r, 'start_volume', 'Startlautstärke', 'volume-medium', 100)}
           <label class="f">Kindersicherung</label>

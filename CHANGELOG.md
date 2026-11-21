@@ -9,6 +9,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   meldet der Reader die Karte als entfernt (Pause wie beim Entfernen), LEDs und Taste Play/Pause
   sind aus. Substitution `reed_standby_bei_magnet` legt fest, ob der Magnet Standby oder Betrieb
   bedeutet. Neue Entitäten „Reed-Schalter“ und „Standby“.
+- **Firmware v5 (Deckel)**: Beim Öffnen des Deckels (und beim Einschalten mit offenem Deckel)
+  begrüßt die Play-LED mit einer Lichtanimation (aufgehen, einmal atmen, in den Status übergehen).
+  Beim Schließen klingt sie langsam aus. Knopf „Begrüßung testen“ (Diagnose).
+- **Panel**: Zeigt pro Lesegerät „Deckel offen“ / „Deckel zu · Standby“ und auf der Kartenseite
+  einen Hinweis, solange der Deckel zu ist. Die Integration findet den Sensor „Standby“ von selbst
+  (Websocket-Felder `standby_sensor`, `standby`).
+
+### Behoben
+- **Firmware**: Steht die Karte beim Öffnen des Deckels noch im Lesefeld, wird sie neu gemeldet und
+  die Wiedergabe setzt fort. Vorher meldete der PN532 eine durchgehend liegende Karte nicht erneut.
+- **Firmware**: Der Reed wird auch beim Start ausgewertet (`trigger_on_initial_state`); vorher galt
+  ein beim Einschalten geschlossener Deckel nicht als Standby.
 
 ### Entfernt
 - **Firmware**: Die LED Zurück (GPIO16) ist entfernt, der Pin gehört dem Reed.
@@ -17,6 +29,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   meldet das nur als Warnung; eine neue Logik folgt.
 
 ### Geändert
+- **Firmware**: Die Quittung beim Einlegen einer Karte leuchtet zweimal weich auf statt hart zu
+  blinken; das Sperrsignal (3× hart) bleibt unterscheidbar.
 - **Firmware**: Die Taster-LEDs (GPIO16/17) sind jetzt über die Substitution `led_inverted`
   umschaltbar. Vorgabe `false` für
   GPIO → Widerstand → LED → GND, `true` für LEDs zwischen 3V3 und GPIO (aktiv-low).

@@ -20,6 +20,8 @@ from .const import (
     LED_ACTION_SUFFIX,
     PLAY_EVENT_NAME,
     PLAY_EVENT_SUFFIX,
+    STANDBY_SENSOR_NAME,
+    STANDBY_SENSOR_SUFFIX,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,6 +41,8 @@ class ReaderConfig:
     play_event: str | None
     back_event: str | None
     led_action: str | None
+    # Optional (Firmware v5): Deckel zu = Standby
+    standby_sensor: str | None = None
 
     @property
     def is_ready(self) -> bool:
@@ -110,6 +114,9 @@ def resolve_reader(hass: HomeAssistant, subentry: ConfigSubentry) -> ReaderConfi
         play_event=_find_entity(entries, "event", PLAY_EVENT_SUFFIX, PLAY_EVENT_NAME),
         back_event=_find_entity(entries, "event", BACK_EVENT_SUFFIX, BACK_EVENT_NAME),
         led_action=led_action_name(hass, device_id),
+        standby_sensor=_find_entity(
+            entries, "binary_sensor", STANDBY_SENSOR_SUFFIX, STANDBY_SENSOR_NAME
+        ),
     )
     _LOGGER.debug("Lesegerät aufgelöst: %s", reader)
     if reader.card_sensor is None:
@@ -118,6 +125,16 @@ def resolve_reader(hass: HomeAssistant, subentry: ConfigSubentry) -> ReaderConfi
         if getattr(reader, attr) is None:
             _LOGGER.warning("Lesegerät %s: %s nicht gefunden", reader.title, attr)
     return reader
+
+
+def reader_standby(hass: HomeAssistant, reader: ReaderConfig) -> bool | None:
+    """Deckel zu? None, wenn das Lesegerät keinen Standby kennt oder offline ist."""
+    if reader.standby_sensor is None:
+        return None
+    state = hass.states.get(reader.standby_sensor)
+    if state is None or state.state not in ("on", "off"):
+        return None
+    return state.state == "on"
 
 
 def reader_online(hass: HomeAssistant, reader: ReaderConfig) -> bool:

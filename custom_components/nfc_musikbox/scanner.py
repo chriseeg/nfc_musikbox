@@ -741,6 +741,8 @@ class ReaderController:
             self._run_button("Nächster Titel", self._on_skip(forward=True))
         elif event_type == EVENT_TYPE_TRIPLE:
             self._run_button("Vorheriger Titel", self._on_skip(forward=False))
+        elif event_type == EVENT_TYPE_LONG:
+            self._run_button("Play/Pause lang", self._on_back_long())
 
     @callback
     def _handle_back_button(self, event: Event[EventStateChangedData]) -> None:

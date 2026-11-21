@@ -82,6 +82,14 @@ async def test_play_button_double_and_triple(hass: HomeAssistant, player: FakeSo
     ]
 
 
+async def test_play_button_long_restarts_card(hass: HomeAssistant, player: FakeSonos) -> None:
+    await setup(hass)
+    player.set_playing(q=3, pos=50)
+    await press(hass, PLAY_EVENT, "lang")
+    assert player.service_names == ["sonos.play_queue"]
+    assert player.q == 1
+
+
 async def test_skip_needs_playback(hass: HomeAssistant, player: FakeSonos) -> None:
     await setup(hass)
     await press(hass, PLAY_EVENT, "doppelt")

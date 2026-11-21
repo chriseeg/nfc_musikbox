@@ -4,7 +4,8 @@
 # Tonie-Logik: Der Reader meldet nur, WELCHE Karte gerade liegt ("Karte auf dem Reader").
 # Alles Weitere (Abspielen, Pause beim Entfernen, Fortsetzen) macht Home Assistant.
 #
-# Taster:  GPIO26 = einmal Wiedergabe/Pause, doppelt nächster Titel, dreifach vorheriger Titel
+# Taster:  GPIO26 = einmal Wiedergabe/Pause, doppelt nächster Titel, dreifach vorheriger Titel,
+#          gedrückt halten (1 s) = Karte von vorne
 #                                                              LED GPIO17
 #          Die Zurück-Taste samt LED ist entfernt (neue Logik folgt).
 # Reed:    GPIO16 = Reed-Schalter (gegen GND), Magnet im Deckel. Deckel zu = Standby:
@@ -201,7 +202,7 @@ event:
   - platform: template
     id: ev_play
     name: "Ereignis Taste Play/Pause"
-    event_types: ["kurz", "doppelt", "dreifach"]
+    event_types: ["kurz", "doppelt", "dreifach", "lang"]
 
 # ---------- Debug-Buttons ----------
 button:
@@ -272,7 +273,8 @@ binary_sensor:
     id: standby
     name: "Standby"
 
-  # Einmal = Wiedergabe/Pause, doppelt = nächster, dreifach = vorheriger Titel.
+  # Einmal = Wiedergabe/Pause, doppelt = nächster, dreifach = vorheriger Titel,
+  # halten = Karte von vorne.
   # Ein einzelner Druck wird erst nach der Pause gemeldet (Abstand), damit Mehrfach-
   # klicks erkannt werden. Die LED folgt dem Wiedergabestatus aus Home Assistant.
   - platform: gpio
@@ -286,6 +288,10 @@ binary_sensor:
       - delayed_on: 20ms
       - delayed_off: 20ms
     on_multi_click:
+      - timing:
+          - ON for at least 1s
+        then:
+          - script.execute: { id: taste_melden, art: "lang" }
       - timing:
           - ON for at most 600ms
           - OFF for at most ${klick_abstand}

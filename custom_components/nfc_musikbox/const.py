@@ -29,7 +29,8 @@ STANDBY_SENSOR_NAME: Final = "Standby"
 
 EVENT_TYPE_SHORT: Final = "kurz"
 EVENT_TYPE_LONG: Final = "lang"
-# Taste Play/Pause, Firmware v5: doppelt = nächster Titel, dreifach = vorheriger Titel
+# Taste Play/Pause, Firmware v5: doppelt = nächster Titel, dreifach = vorheriger Titel,
+# lang (EVENT_TYPE_LONG) = Karte von vorne
 EVENT_TYPE_DOUBLE: Final = "doppelt"
 EVENT_TYPE_TRIPLE: Final = "dreifach"
 # Ältere Tasten-Events (z. B. wiederhergestellter Zustand nach Reconnect) ignorieren

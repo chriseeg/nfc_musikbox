@@ -20,6 +20,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   typen `doppelt`/`dreifach`, LED quittiert; Integration: `media_next_track`/`media_previous_track`,
   nur bei laufender oder pausierter Karte, gesperrte Karte blinkt). Ein einzelner Druck kommt dafür
   um etwa 0,35 s verzögert (`klick_abstand`).
+- **Taste Play/Pause gedrückt halten** (1 s): Karte von vorne (Sonos: erster Titel der Queue).
 
 ### Behoben
 - **Firmware**: Steht die Karte beim Öffnen des Deckels noch im Lesefeld, wird sie neu gemeldet und

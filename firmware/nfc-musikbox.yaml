@@ -4,7 +4,8 @@
 # Tonie-Logik: Der Reader meldet nur, WELCHE Karte gerade liegt ("Karte auf dem Reader").
 # Alles Weitere (Abspielen, Pause beim Entfernen, Fortsetzen) macht Home Assistant.
 #
-# Taster:  GPIO26 = Wiedergabe/Pause                           LED GPIO17
+# Taster:  GPIO26 = einmal Wiedergabe/Pause, doppelt nächster Titel, dreifach vorheriger Titel
+#                                                              LED GPIO17
 #          Die Zurück-Taste samt LED ist entfernt (neue Logik folgt).
 # Reed:    GPIO16 = Reed-Schalter (gegen GND), Magnet im Deckel. Deckel zu = Standby:
 #          Karte gilt als entfernt, Home Assistant pausiert, LED klingt aus, Taste ruht.
@@ -22,6 +23,8 @@ substitutions:
   led_inverted: "false"
   # "true": Magnet am Reed = Standby, "false": Magnet am Reed = Betrieb
   reed_standby_bei_magnet: "true"
+  # Höchstens so lange Pause zwischen den Klicks eines Doppel-/Dreifachklicks
+  klick_abstand: 350ms
 
 esphome:
   name: ${name}
@@ -198,7 +201,7 @@ event:
   - platform: template
     id: ev_play
     name: "Ereignis Taste Play/Pause"
-    event_types: ["kurz"]
+    event_types: ["kurz", "doppelt", "dreifach"]
 
 # ---------- Debug-Buttons ----------
 button:
@@ -269,7 +272,9 @@ binary_sensor:
     id: standby
     name: "Standby"
 
-  # Wiedergabe/Pause. Die LED folgt dem Wiedergabestatus aus Home Assistant.
+  # Einmal = Wiedergabe/Pause, doppelt = nächster, dreifach = vorheriger Titel.
+  # Ein einzelner Druck wird erst nach der Pause gemeldet (Abstand), damit Mehrfach-
+  # klicks erkannt werden. Die LED folgt dem Wiedergabestatus aus Home Assistant.
   - platform: gpio
     id: btn_play
     name: "Taste Play/Pause"
@@ -280,17 +285,49 @@ binary_sensor:
     filters:
       - delayed_on: 20ms
       - delayed_off: 20ms
-    on_press:
+    on_multi_click:
+      - timing:
+          - ON for at most 600ms
+          - OFF for at most ${klick_abstand}
+          - ON for at most 600ms
+          - OFF for at most ${klick_abstand}
+          - ON for at most 600ms
+          - OFF for at least ${klick_abstand}
+        then:
+          - script.execute: { id: taste_melden, art: "dreifach" }
+      - timing:
+          - ON for at most 600ms
+          - OFF for at most ${klick_abstand}
+          - ON for at most 600ms
+          - OFF for at least ${klick_abstand}
+        then:
+          - script.execute: { id: taste_melden, art: "doppelt" }
+      - timing:
+          - ON for at most 600ms
+          - OFF for at least ${klick_abstand}
+        then:
+          - script.execute: { id: taste_melden, art: "kurz" }
+
+# ---------- Logik ----------
+script:
+  # Tastendruck an Home Assistant (nur bei offenem Deckel); Mehrfachklick quittiert die LED
+  - id: taste_melden
+    parameters:
+      art: string
+    then:
       - if:
           condition:
             binary_sensor.is_off: standby
           then:
             - event.trigger:
                 id: ev_play
-                event_type: kurz
+                event_type: !lambda 'return art;'
+            - if:
+                condition:
+                  lambda: 'return art != "kurz" && id(current_tag).state != "none";'
+                then:
+                  - script.execute: tag_feedback
 
-# ---------- Logik ----------
-script:
   # Karte an Home Assistant melden (Einlegen, Wechsel oder Deckel auf mit Karte)
   - id: karte_melden
     parameters:

@@ -69,10 +69,30 @@ async def test_play_button_toggles(hass: HomeAssistant, player: FakeSonos) -> No
     assert player.state == "paused"
 
 
+async def test_play_button_double_and_triple(hass: HomeAssistant, player: FakeSonos) -> None:
+    await setup(hass)
+    player.set_playing(q=2, pos=10)
+    await press(hass, PLAY_EVENT, "doppelt")
+    assert player.q == 3
+    await press(hass, PLAY_EVENT, "dreifach")
+    assert player.q == 2
+    assert player.service_names == [
+        "media_player.media_next_track",
+        "media_player.media_previous_track",
+    ]
+
+
+async def test_skip_needs_playback(hass: HomeAssistant, player: FakeSonos) -> None:
+    await setup(hass)
+    await press(hass, PLAY_EVENT, "doppelt")
+    assert player.service_names == []
+
+
 async def test_buttons_need_card(hass: HomeAssistant, player: FakeSonos) -> None:
     await setup(hass, card_value="none")
     player.set_playing(q=1, pos=100)
     await press(hass, PLAY_EVENT, "kurz")
+    await press(hass, PLAY_EVENT, "doppelt")
     await press(hass, BACK_EVENT, "kurz")
     await press(hass, BACK_EVENT, "lang")
     assert player.service_names == []

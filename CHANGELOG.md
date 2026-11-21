@@ -16,6 +16,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   einen Hinweis, solange der Deckel zu ist. Die Integration findet den Sensor „Standby“ von selbst
   (Websocket-Felder `standby_sensor`, `standby`).
 
+- **Taste Play/Pause**: doppelt = nächster Titel, dreifach = vorheriger Titel (Firmware: Ereignis-
+  typen `doppelt`/`dreifach`, LED quittiert; Integration: `media_next_track`/`media_previous_track`,
+  nur bei laufender oder pausierter Karte, gesperrte Karte blinkt). Ein einzelner Druck kommt dafür
+  um etwa 0,35 s verzögert (`klick_abstand`).
+
 ### Behoben
 - **Firmware**: Steht die Karte beim Öffnen des Deckels noch im Lesefeld, wird sie neu gemeldet und
   die Wiedergabe setzt fort. Vorher meldete der PN532 eine durchgehend liegende Karte nicht erneut.

@@ -30,8 +30,10 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     BUTTON_EVENT_MAX_AGE,
+    EVENT_TYPE_DOUBLE,
     EVENT_TYPE_LONG,
     EVENT_TYPE_SHORT,
+    EVENT_TYPE_TRIPLE,
     NO_CARD,
     OPT_CARD_CHANGE_DELAY,
     OPT_REMOVAL_REWIND,
@@ -732,9 +734,13 @@ class ReaderController:
 
     @callback
     def _handle_play_button(self, event: Event[EventStateChangedData]) -> None:
-        if self._button_event_type(event) != EVENT_TYPE_SHORT:
-            return
-        self._run_button("Play/Pause", self._on_play_button())
+        event_type = self._button_event_type(event)
+        if event_type == EVENT_TYPE_SHORT:
+            self._run_button("Play/Pause", self._on_play_button())
+        elif event_type == EVENT_TYPE_DOUBLE:
+            self._run_button("Nächster Titel", self._on_skip(forward=True))
+        elif event_type == EVENT_TYPE_TRIPLE:
+            self._run_button("Vorheriger Titel", self._on_skip(forward=False))
 
     @callback
     def _handle_back_button(self, event: Event[EventStateChangedData]) -> None:
@@ -789,6 +795,19 @@ class ReaderController:
             self._on_locked()
             return
         await self.player.async_play_pause()
+
+    async def _on_skip(self, *, forward: bool) -> None:
+        """Titel überspringen; nur, solange die Karte spielt oder pausiert."""
+        if self._button_blocked():
+            self._on_locked()
+            return
+        state = self.player.state
+        if state is None or state.state not in (STATE_PLAYING, STATE_PAUSED):
+            return
+        if forward:
+            await self.player.async_next_track()
+        else:
+            await self.player.async_previous_track()
 
     async def _on_back_short(self) -> None:
         if self._button_blocked():

@@ -98,8 +98,9 @@ class FakeSonos:
         elif name == "media_player.volume_set":
             self.volume = float(data["volume_level"])
             self.publish()
-        elif name in ("media_player.shuffle_set", "media_player.repeat_set"):
-            pass
+        elif name in ("media_player.media_next_track", "media_player.media_previous_track"):
+            step = 1 if name.endswith("next_track") else -1
+            self.set_playing(max(1, self.q + step), 0.0)
         elif name == "sonos.play_queue":
             self.set_playing(int(data["queue_position"]) + 1, 0.0)
 
@@ -119,6 +120,8 @@ class FakeSonos:
             "media_play",
             "media_play_pause",
             "media_seek",
+            "media_next_track",
+            "media_previous_track",
             "volume_set",
             "shuffle_set",
             "repeat_set",

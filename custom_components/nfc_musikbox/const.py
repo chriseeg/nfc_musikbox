@@ -23,8 +23,16 @@ PLAY_EVENT_NAME: Final = "Ereignis Taste Play/Pause"
 BACK_EVENT_SUFFIX: Final = "ereignis_taste_zuruck"
 BACK_EVENT_NAME: Final = "Ereignis Taste Zurück"
 
+# Firmware v5: Deckel mit Reed-Schalter; an = Deckel zu, Lesegerät ruht
+STANDBY_SENSOR_SUFFIX: Final = "standby"
+STANDBY_SENSOR_NAME: Final = "Standby"
+
 EVENT_TYPE_SHORT: Final = "kurz"
 EVENT_TYPE_LONG: Final = "lang"
+# Taste Play/Pause, Firmware v5: doppelt = nächster Titel, dreifach = vorheriger Titel,
+# lang (EVENT_TYPE_LONG) = Karte von vorne
+EVENT_TYPE_DOUBLE: Final = "doppelt"
+EVENT_TYPE_TRIPLE: Final = "dreifach"
 # Ältere Tasten-Events (z. B. wiederhergestellter Zustand nach Reconnect) ignorieren
 BUTTON_EVENT_MAX_AGE: Final = 5.0
 

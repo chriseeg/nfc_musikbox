@@ -25,9 +25,11 @@ from homeassistant.components.media_player.const import (
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_SUPPORTED_FEATURES,
+    SERVICE_MEDIA_NEXT_TRACK,
     SERVICE_MEDIA_PAUSE,
     SERVICE_MEDIA_PLAY,
     SERVICE_MEDIA_PLAY_PAUSE,
+    SERVICE_MEDIA_PREVIOUS_TRACK,
     SERVICE_MEDIA_SEEK,
     SERVICE_REPEAT_SET,
     SERVICE_SHUFFLE_SET,
@@ -181,6 +183,12 @@ class PlayerBackend:
 
     async def async_play_pause(self) -> None:
         await self._call(MP_DOMAIN, SERVICE_MEDIA_PLAY_PAUSE)
+
+    async def async_next_track(self) -> None:
+        await self._call(MP_DOMAIN, SERVICE_MEDIA_NEXT_TRACK)
+
+    async def async_previous_track(self) -> None:
+        await self._call(MP_DOMAIN, SERVICE_MEDIA_PREVIOUS_TRACK)
 
     async def async_restart(self) -> None:
         """Medium von vorne (lange Zurück-Taste)."""

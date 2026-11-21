@@ -22,6 +22,7 @@ PLAYER = "media_player.sonos_kinderzimmer"
 CARD_SENSOR = "sensor.kinderzimmer_nfc_musikbox_karte_auf_dem_reader"
 PLAY_EVENT = "event.kinderzimmer_nfc_musikbox_ereignis_taste_play_pause"
 BACK_EVENT = "event.kinderzimmer_nfc_musikbox_ereignis_taste_zuruck"
+STANDBY_SENSOR = "binary_sensor.kinderzimmer_nfc_musikbox_standby"
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +46,7 @@ def make_reader(
     node: str = "nfc-musikbox",
     mac: str = "aa:bb:cc:dd:ee:ff",
     with_card_sensor: bool = True,
+    with_standby: bool = False,
 ) -> FakeReader:
     """ESPHome-Config-Entry, Gerät und Entitäten wie bei der echten Firmware anlegen."""
     esphome_entry = MockConfigEntry(
@@ -65,6 +67,8 @@ def make_reader(
     ]
     if with_card_sensor:
         entities.append(("sensor", "karte_auf_dem_reader", "Karte auf dem Reader"))
+    if with_standby:
+        entities.append(("binary_sensor", "standby", "Standby"))
     for domain, object_id, name in entities:
         ent_reg.async_get_or_create(
             domain,

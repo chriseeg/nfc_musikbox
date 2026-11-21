@@ -76,7 +76,10 @@ def esphome_node_name(hass: HomeAssistant, device_id: str) -> str | None:
     device = dr.async_get(hass).async_get(device_id)
     if device is None:
         return None
-    for entry_id in device.config_entries:
+    # Ab HA 2026.11 gehört ein Gerät genau einem Eintrag (config_entries ist veraltet)
+    single = getattr(device, "config_entry_id", None)
+    entry_ids = [single] if single is not None else device.config_entries
+    for entry_id in entry_ids:
         entry = hass.config_entries.async_get_entry(entry_id)
         if entry is not None and entry.domain == ESPHOME_DOMAIN:
             name = entry.data.get("device_name")

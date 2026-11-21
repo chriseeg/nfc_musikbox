@@ -54,9 +54,7 @@ class LedSync:
             self.schedule(force=True)
         else:
             self._unsub.append(
-                self.hass.bus.async_listen_once(
-                    EVENT_HOMEASSISTANT_STARTED, lambda _: self.schedule(force=True)
-                )
+                self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, self._handle_started)
             )
 
     @callback
@@ -66,6 +64,11 @@ class LedSync:
         self._unsub.clear()
         for task in self._tasks:
             task.cancel()
+
+    @callback
+    def _handle_started(self, _event: Event) -> None:
+        # Als Callback in der Event-Loop; ein Lambda liefe im Executor-Thread
+        self.schedule(force=True)
 
     @callback
     def _handle_player(self, event: Event[EventStateChangedData]) -> None:

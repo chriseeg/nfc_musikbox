@@ -253,10 +253,10 @@ async def test_music_mode_with_only_while_lying_pauses_and_resumes(
     assert player.service_names == ["media_player.media_pause"]
     assert entry.runtime_data.store.positions[A].q == 2
 
+    # Der Player steht noch pausiert an derselben Stelle: einfach weiter
     player.calls.clear()
     await card(hass, A)
-    assert player.service_names[0] == "media_player.play_media"
-    assert "sonos.play_queue" in player.service_names
+    assert player.service_names == ["media_player.media_play"]
 
 
 async def test_audiobook_mode_without_only_while_lying_ignores_removal(

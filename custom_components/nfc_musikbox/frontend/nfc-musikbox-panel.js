@@ -375,7 +375,7 @@
         const readers = c.readers.length ? this.readers.filter((r) => c.readers.includes(r.id)) : this.readers;
         const chips = readers.map((r) => `<span class="chip">${ic('speaker')}${esc(this._playerShort(r))}</span>`).join('');
         const lying = onReader.has(c.tag_id);
-        const pos = c.mode === 'tonie' && c.position ? `${posMain(c.position)}${c.position.t ? ` · ${c.position.t}` : ''}` : null;
+        const pos = c.only_while_lying && c.position ? `${posMain(c.position)}${c.position.t ? ` · ${c.position.t}` : ''}` : null;
         h += `<div class="tile ${c.enabled ? '' : 'off'}" data-a="edit" data-t="${esc(c.tag_id)}">
           ${this.art(m.metadata && m.metadata.thumbnail)}
           <div class="meta"><div class="title">${esc(c.name)}</div><div class="media">${esc(title)}</div>
@@ -456,15 +456,16 @@
             <span class="media" style="display:block">${m ? 'Tippen zum Ändern' : 'Album, Playlist, Favorit, Radio …'}</span></span>${ic('chevron-right')}</button>
           <label class="f">Betriebsart</label>
           <div class="seg">
-            <button class="${sh.mode === 'tonie' ? 'on' : ''}" data-a="set-mode" data-m="tonie">Hörspiel<small>Läuft nur, solange die Karte liegt. Stelle wird gemerkt.</small></button>
-            <button class="${sh.mode === 'simple' ? 'on' : ''}" data-a="set-mode" data-m="simple">Musik<small>Karte startet die Wiedergabe, Abziehen tut nichts.</small></button>
+            <button class="${sh.mode === 'tonie' ? 'on' : ''}" data-a="set-mode" data-m="tonie">Hörspiel<small>Zufallswiedergabe aus, damit die gemerkte Stelle stimmt.</small></button>
+            <button class="${sh.mode === 'simple' ? 'on' : ''}" data-a="set-mode" data-m="simple">Musik<small>Zufall und Wiederholen einstellbar.</small></button>
           </div>
+          <button class="swrow" data-a="toggle-lying" style="margin-top:10px"><span class="t">Nur beim Aufliegen spielen<small>${sh.lying ? 'Abziehen pausiert und merkt die Stelle, Auflegen setzt fort.' : 'Auflegen startet das Medium von vorne, Abziehen tut nichts.'}</small></span><span class="sw ${sh.lying ? 'on' : ''}"></span></button>
           ${sh.mode === 'simple' ? `<label class="f">Zufallswiedergabe</label><div class="seg compact">
             ${[[null, 'Unverändert'], [true, 'An'], [false, 'Aus']].map(([v, l]) => `<button class="${sh.shuffle === v ? 'on' : ''}" data-a="set-shuffle" data-v="${v}">${l}</button>`).join('')}</div>
             <label class="f">Wiederholen</label><div class="seg compact">
             ${[[null, 'Unverändert'], ['off', 'Aus'], ['all', 'Alle'], ['one', 'Titel']].map(([v, l]) => `<button class="${sh.repeat === v ? 'on' : ''}" data-a="set-repeat" data-v="${v}">${l}</button>`).join('')}</div>
             <p class="hint">„Unverändert“ lässt die Einstellung des Lautsprechers, wie sie ist.</p>` : `<p class="hint">Zufallswiedergabe wird beim Start ausgeschaltet, damit die gemerkte Stelle stimmt.</p>`}
-          ${sh.mode === 'tonie' && sh.edit ? `<label class="f">Gemerkte Stelle</label><div class="posbox">${ic('bookmark-outline')}
+          ${sh.lying && sh.edit ? `<label class="f">Gemerkte Stelle</label><div class="posbox">${ic('bookmark-outline')}
             <span class="t">${pos ? `<b>${esc(posMain(pos))}</b><small>${esc(pos.t || 'Titel unbekannt')}</small>` : '<b>Noch keine Stelle</b><small>Wird beim Abziehen der Karte gemerkt.</small>'}</span>
             ${pos ? '<button class="btn small" data-a="reset-pos">Zurücksetzen</button>' : ''}</div>` : ''}
           <label class="f">Funktioniert an</label>
@@ -476,7 +477,7 @@
           <button class="swrow" data-a="toggle-limited"><span class="t">Tageslimit gilt<small>${sh.limited ? (this.hasLimits ? `Zählt zum Tageslimit (heute ${esc(this._usageText())}).` : 'Zählt zum Tageslimit, sobald eines eingestellt ist.') : 'Läuft immer, zählt nicht (z. B. Einschlafmusik).'}</small></span><span class="sw ${sh.limited ? 'on' : ''}"></span></button>
           ${sh.edit ? `<label class="f">Karte</label><button class="swrow" data-a="toggle-enabled"><span class="t">Karte aktiv<small>${sh.enabled ? 'Reagiert auf das Auflegen.' : 'Deaktiviert: Auflegen bewirkt nichts.'}</small></span><span class="sw ${sh.enabled ? 'on' : ''}"></span></button>
             <label class="f">Testen</label><div class="tests"><button class="btn small" data-a="test" data-t="${esc(sh.tag_id)}">${ic('play')}Von vorne</button>
-            ${sh.mode === 'tonie' ? `<button class="btn small" data-a="test-resume" data-t="${esc(sh.tag_id)}">${ic('bookmark-outline')}Fortsetzen</button>` : ''}</div>
+            ${sh.lying ? `<button class="btn small" data-a="test-resume" data-t="${esc(sh.tag_id)}">${ic('bookmark-outline')}Fortsetzen</button>` : ''}</div>
             <p class="hint">Spielt auf dem Lautsprecher des ersten passenden Lesegeräts, ohne dass die Karte aufliegt.</p>` : ''}
           ${sh.error ? `<div class="warn" style="margin-top:12px">${esc(sh.error)}</div>` : ''}
         </div>
@@ -610,7 +611,11 @@
           case 'open': await this.openItem(Number(el.dataset.i)); break;
           case 'choose': this.chooseItem(Number(el.dataset.i)); break;
           case 'save': await this.save(); break;
-          case 'set-mode': S.sheet.mode = el.dataset.m; this.render(); break;
+          case 'set-mode':
+            // Neue Karte: Tonie-Funktion folgt der Betriebsart (Hörspiel an, Musik aus), danach frei
+            if (!S.sheet.edit) S.sheet.lying = el.dataset.m === 'tonie';
+            S.sheet.mode = el.dataset.m; this.render(); break;
+          case 'toggle-lying': S.sheet.lying = !S.sheet.lying; this.render(); break;
           case 'set-shuffle': S.sheet.shuffle = JSON.parse(el.dataset.v); this.render(); break;
           case 'set-repeat': S.sheet.repeat = el.dataset.v === 'null' ? null : el.dataset.v; this.render(); break;
           case 'toggle-enabled': S.sheet.enabled = !S.sheet.enabled; this.render(); break;
@@ -665,7 +670,7 @@
       const sel = card && card.readers.length ? card.readers : ready;
       this.S.sheet = {
         edit: edit && !!card, tag_id: tagId, name: card ? card.name : (t && t.name !== tagId ? t.name : ''),
-        media: card ? card.media : null, mode: card ? card.mode : 'tonie', enabled: card ? card.enabled : true,
+        media: card ? card.media : null, mode: card ? card.mode : 'tonie', lying: card ? !!card.only_while_lying : true, enabled: card ? card.enabled : true,
         shuffle: card && typeof card.shuffle === 'boolean' ? card.shuffle : null, repeat: card ? card.repeat || null : null,
         limited: card ? !!card.limited : this.hasLimits,
         sel: new Set(sel), error: null, saving: false,
@@ -734,7 +739,7 @@
       try {
         // Alle ausgewählt = an allen Lesegeräten, auch künftigen
         const readers = sel.length === ready.length ? [] : sel;
-        await this.ws({ type: `${DOMAIN}/card/save`, tag_id: sh.tag_id, name: sh.name, media: sh.media, mode: sh.mode, enabled: sh.enabled, readers, shuffle: sh.shuffle, repeat: sh.repeat, limited: sh.limited });
+        await this.ws({ type: `${DOMAIN}/card/save`, tag_id: sh.tag_id, name: sh.name, media: sh.media, mode: sh.mode, only_while_lying: sh.lying, enabled: sh.enabled, readers, shuffle: sh.shuffle, repeat: sh.repeat, limited: sh.limited });
         await this._syncTagName(sh.tag_id, sh.name);
         this.S.sheet = null;
         this.render();

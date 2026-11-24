@@ -172,8 +172,10 @@ async def test_card_entities_follow_store(
     switch_id = ent_reg.async_get_entity_id("switch", DOMAIN, f"card_{A}_enabled")
     select_id = ent_reg.async_get_entity_id("select", DOMAIN, f"card_{A}_mode")
     sensor_id = ent_reg.async_get_entity_id("sensor", DOMAIN, f"card_{A}_position")
-    assert switch_id and select_id and sensor_id
+    lying_id = ent_reg.async_get_entity_id("switch", DOMAIN, f"card_{A}_only_while_lying")
+    assert switch_id and select_id and sensor_id and lying_id
     assert hass.states.get(switch_id).state == "on"
+    assert hass.states.get(lying_id).state == "on"
     assert hass.states.get(select_id).state == "tonie"
     assert hass.states.get(sensor_id).state == "unknown"
 
@@ -183,6 +185,11 @@ async def test_card_entities_follow_store(
         "select", "select_option", {"entity_id": select_id, "option": "simple"}, blocking=True
     )
     assert entry.runtime_data.store.cards[A].mode == "simple"
+    # Betriebsart und Aufliegen-Funktion sind unabhängig
+    assert entry.runtime_data.store.cards[A].only_while_lying is True
+    await hass.services.async_call("switch", "turn_off", {"entity_id": lying_id}, blocking=True)
+    assert entry.runtime_data.store.cards[A].only_while_lying is False
+    assert hass.states.get(lying_id).state == "off"
 
     entry.runtime_data.store.set_position(A, Position(q=2, p=4210, t="Kapitel 2"))
     await hass.async_block_till_done()

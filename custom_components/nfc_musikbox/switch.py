@@ -31,7 +31,10 @@ async def async_setup_entry(
         hass,
         entry,
         async_add_entities,
-        lambda data, card: [CardEnabledSwitch(data, card, "enabled")],
+        lambda data, card: [
+            CardEnabledSwitch(data, card, "enabled"),
+            CardOnlyWhileLyingSwitch(data, card, "only_while_lying"),
+        ],
     )
 
 
@@ -50,6 +53,23 @@ class CardEnabledSwitch(CardEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._data.store.async_update_card(self._tag_id, enabled=False)
+
+
+class CardOnlyWhileLyingSwitch(CardEntity, SwitchEntity):
+    """Tonie-Funktion: spielt nur, solange die Karte liegt; Stelle wird gemerkt."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def is_on(self) -> bool | None:
+        card = self.card
+        return bool(card.only_while_lying) if card else None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._data.store.async_update_card(self._tag_id, only_while_lying=True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._data.store.async_update_card(self._tag_id, only_while_lying=False)
 
 
 class ReaderParentalSwitch(SwitchEntity):

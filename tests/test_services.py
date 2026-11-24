@@ -40,6 +40,7 @@ async def test_assign_then_place_plays(hass: HomeAssistant) -> None:
     card = entry.runtime_data.store.cards["CA-09-0C-05"]
     assert card.name == "Hörspiel Puderzucker"
     assert card.mode == "tonie"
+    assert card.only_while_lying is True
     assert card.readers == []
 
     hass.states.async_set(CARD_SENSOR, "CA-09-0C-05")
@@ -47,6 +48,20 @@ async def test_assign_then_place_plays(hass: HomeAssistant) -> None:
     assert player.services("media_player.play_media") == [
         {"media_content_id": "FV:2/46", "media_content_type": "favorite_item_id"}
     ]
+
+
+async def test_assign_only_while_lying_independent_of_mode(hass: HomeAssistant) -> None:
+    entry = await _setup(hass)
+    for tag, extra in (
+        ("A", {"mode": "simple"}),
+        ("B", {"mode": "simple", "only_while_lying": True}),
+        ("C", {"only_while_lying": False}),
+    ):
+        await hass.services.async_call(
+            DOMAIN, "assign_card", {"tag_id": tag, "media": MEDIA, **extra}, blocking=True
+        )
+    cards = entry.runtime_data.store.cards
+    assert [cards[t].only_while_lying for t in "ABC"] == [False, True, False]
 
 
 async def test_assign_with_reader_and_mode(hass: HomeAssistant) -> None:

@@ -83,6 +83,9 @@
       "enabled": {
         "name": "Enabled"
       },
+      "only_while_lying": {
+        "name": "Only play while card is on reader"
+      },
       "parental": {
         "name": "Parental controls"
       }
@@ -137,7 +140,11 @@
         },
         "mode": {
           "name": "Mode",
-          "description": "Audiobook: plays only while the card is on the reader, position is remembered. Music: card starts playback, with its own shuffle and repeat settings."
+          "description": "Audiobook: shuffle is switched off at start. Music: own shuffle and repeat settings."
+        },
+        "only_while_lying": {
+          "name": "Only play while card is on reader",
+          "description": "Plays only while the card is on the reader: removing it pauses and remembers the position, placing it resumes. Leave empty = default of the mode (audiobook on, music off)."
         },
         "enabled": {
           "name": "Enabled",

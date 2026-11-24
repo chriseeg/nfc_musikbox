@@ -241,6 +241,40 @@ async def test_simple_mode(hass: HomeAssistant, player: FakeSonos) -> None:
     assert player.service_names == []
 
 
+async def test_music_mode_with_only_while_lying_pauses_and_resumes(
+    hass: HomeAssistant, player: FakeSonos
+) -> None:
+    entry = await setup(hass, tonie(mode="simple", only_while_lying=True))
+    await card(hass, A)
+    player.calls.clear()
+    player.set_playing(q=2, pos=100, seconds_ago=10)
+
+    await card(hass, "none")
+    assert player.service_names == ["media_player.media_pause"]
+    assert entry.runtime_data.store.positions[A].q == 2
+
+    player.calls.clear()
+    await card(hass, A)
+    assert player.service_names[0] == "media_player.play_media"
+    assert "sonos.play_queue" in player.service_names
+
+
+async def test_audiobook_mode_without_only_while_lying_ignores_removal(
+    hass: HomeAssistant, player: FakeSonos
+) -> None:
+    entry = await setup(hass, tonie(only_while_lying=False))
+    entry.runtime_data.store.set_position(A, Position(q=2, p=100, t="Kapitel 2"))
+
+    await card(hass, A)
+    assert player.service_names == ["media_player.play_media"]
+
+    player.calls.clear()
+    player.set_playing(q=3, pos=50, seconds_ago=0)
+    await card(hass, "none")
+    assert player.service_names == []
+    assert entry.runtime_data.store.positions[A] == Position(q=2, p=100, t="Kapitel 2")
+
+
 async def test_disabled_unknown_and_foreign_cards_do_nothing(
     hass: HomeAssistant, player: FakeSonos
 ) -> None:

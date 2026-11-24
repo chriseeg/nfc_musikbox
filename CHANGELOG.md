@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **„Nur beim Aufliegen spielen“** (Tonie-Funktion) ist jetzt unabhängig von der Betriebsart
+  einstellbar: Schalter pro Karte (Entität und Panel), Feld `only_while_lying` in
+  `nfc_musikbox.assign_card` und im Websocket. Bestehende Karten behalten ihr Verhalten
+  (Hörspiel an, Musik aus). Die Betriebsart bestimmt nur noch Zufallswiedergabe und Wiederholen.
+
 ## [0.10.0] - 2026-11-21
 
 ### Hinzugefügt

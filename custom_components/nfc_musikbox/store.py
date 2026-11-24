@@ -214,6 +214,14 @@ class Card:
     repeat: RepeatMode | None = None
     # Kindersicherung: Karte zählt zum Tageslimit (Anzahl und Hörzeit)
     limited: bool = False
+    # Tonie-Funktion: Wiedergabe nur, solange die Karte liegt (Pause beim Abziehen, Stelle merken,
+    # beim Auflegen fortsetzen). Unabhängig von der Betriebsart; None = Vorgabe der Betriebsart
+    # (Hörspiel an, Musik aus), nach der Initialisierung immer ein bool.
+    only_while_lying: bool | None = None
+
+    def __post_init__(self) -> None:
+        if self.only_while_lying is None:
+            self.only_while_lying = self.mode == "tonie"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Card:
@@ -230,6 +238,9 @@ class Card:
             shuffle=shuffle if isinstance(shuffle, bool) else None,
             repeat=repeat if repeat in REPEAT_MODES else None,
             limited=bool(data.get("limited", False)),
+            only_while_lying=(
+                data["only_while_lying"] if isinstance(data.get("only_while_lying"), bool) else None
+            ),
         )
 
     def works_on(self, reader_id: str) -> bool:

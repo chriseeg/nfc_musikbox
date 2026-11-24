@@ -67,6 +67,22 @@ async def test_invalid_entries_ignored(hass: HomeAssistant, hass_storage: dict[s
     assert store.positions == {}
 
 
+def test_only_while_lying_defaults_follow_mode() -> None:
+    assert Card(tag_id="A", name="a").only_while_lying is True
+    assert Card(tag_id="A", name="a", mode="simple").only_while_lying is False
+    assert Card(tag_id="A", name="a", mode="simple", only_while_lying=True).only_while_lying is True
+    assert Card(tag_id="A", name="a", only_while_lying=False).only_while_lying is False
+
+
+def test_only_while_lying_from_dict_migrates_old_cards() -> None:
+    assert Card.from_dict({"tag_id": "A", "mode": "tonie"}).only_while_lying is True
+    assert Card.from_dict({"tag_id": "A", "mode": "simple"}).only_while_lying is False
+    explicit = Card.from_dict({"tag_id": "A", "mode": "simple", "only_while_lying": True})
+    assert explicit.only_while_lying is True
+    junk = Card.from_dict({"tag_id": "A", "mode": "simple", "only_while_lying": "ja"})
+    assert junk.only_while_lying is False
+
+
 def test_title_truncated() -> None:
     assert len(Position(q=1, p=0, t="x" * 100).t) == 60
 

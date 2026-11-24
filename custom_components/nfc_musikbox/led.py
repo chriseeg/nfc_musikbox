@@ -45,12 +45,14 @@ class LedSync:
         self._lock = asyncio.Lock()
         self._unsub: list[Any] = []
         self._tasks: set[asyncio.Task[None]] = set()
+        self._stopped = False
         self._loading = False
         self._load_done = False
         self._load_timers: list[CALLBACK_TYPE] = []
 
     @callback
     def async_start(self) -> None:
+        self._stopped = False
         if self.reader.led_action is None:
             _LOGGER.warning("%s: keine LED-Aktion gefunden, LED bleibt aus", self.reader.title)
             return
@@ -67,6 +69,8 @@ class LedSync:
 
     @callback
     def async_stop(self) -> None:
+        self._stopped = True
+        self._loading = False
         for unsub in self._unsub:
             unsub()
         self._unsub.clear()
@@ -94,6 +98,9 @@ class LedSync:
     def set_loading(self, active: bool) -> None:
         """Blinken, solange eine Karte ihr Medium startet, bis die Wiedergabe wirklich läuft."""
         self._cancel_load_timers()
+        if self._stopped:
+            # Beim Entladen beendet der Controller seinen Ablauf erst nach dem LED-Stopp
+            return
         if active:
             self._loading = True
             self._load_done = False

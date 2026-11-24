@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-24
+
 ### Hinzugefügt
 - **LED beim Laden**: Während eine Karte ihr Medium startet, bis die Wiedergabe wirklich läuft
   (auch bei Puffern), sendet die Integration den Zustand `loading`. Die Firmware blinkt dann

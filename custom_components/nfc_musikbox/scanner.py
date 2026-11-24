@@ -36,6 +36,7 @@ from .const import (
     EVENT_TYPE_TRIPLE,
     NO_CARD,
     OPT_CARD_CHANGE_DELAY,
+    OPT_MEMORY_HOURS,
     OPT_REMOVAL_REWIND,
     OPT_SKIP_BACK,
 )
@@ -363,6 +364,7 @@ class ReaderController:
             await self.player.async_play_media(card.media)
             return
 
+        self.store.expire_positions(float(self.options.get(OPT_MEMORY_HOURS, 0)))
         memory = self.store.positions.get(card.tag_id)
         state = self.player.state
         if (

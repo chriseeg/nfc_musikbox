@@ -46,7 +46,9 @@ async def test_position_delayed_save(
     freezer.tick(10)
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
-    assert hass_storage["nfc_musikbox"]["data"]["positions"] == {"A": {"q": 1, "p": 10, "t": "x"}}
+    saved = hass_storage["nfc_musikbox"]["data"]["positions"]["A"]
+    assert {k: saved[k] for k in ("q", "p", "t")} == {"q": 1, "p": 10, "t": "x"}
+    assert saved["ts"] > 0
 
 
 async def test_invalid_entries_ignored(hass: HomeAssistant, hass_storage: dict[str, Any]) -> None:
@@ -124,3 +126,32 @@ async def test_durations_roundtrip(hass: HomeAssistant, hass_storage: dict[str, 
     assert again.durations["A"].d == {2: 700}
     await again.async_remove_card("A")
     assert "A" not in again.durations
+
+
+async def test_expire_positions(hass: HomeAssistant) -> None:
+    store = CardStore(hass)
+    await store.async_load()
+    store.positions["old"] = Position(q=2, p=100, t="a", ts=1_000.0)
+    store.positions["new"] = Position(q=3, p=200, t="b", ts=1_000.0 + 40 * 3600)
+    now = 1_000.0 + 48 * 3600
+    assert store.expire_positions(0, now) == 0
+    assert store.expire_positions(12, now) == 1
+    assert "old" not in store.positions
+    assert "new" in store.positions
+    assert store.expire_positions(48, now) == 0
+
+
+async def test_legacy_position_gets_timestamp(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    hass_storage["nfc_musikbox"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": "nfc_musikbox",
+        "data": {"cards": [], "positions": {"A": {"q": 2, "p": 50, "t": "x"}}},
+    }
+    store = CardStore(hass)
+    await store.async_load()
+    assert store.positions["A"].ts > 0
+    # frisch gestempelt: verfällt nicht sofort
+    assert store.expire_positions(1) == 0

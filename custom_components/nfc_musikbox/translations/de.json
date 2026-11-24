@@ -49,6 +49,7 @@
         "data": {
           "card_change_delay": "Pause beim Kartenwechsel",
           "removal_rewind": "Rücksprung beim Entfernen",
+          "memory_hours": "Gemerkte Stelle vergessen nach (h)",
           "skip_back": "Zurück-Taste (kurz) springt um",
           "restore_settle": "Wartezeit nach Start des Mediums",
           "restore_start_timeout": "Timeout bis Wiedergabe startet",
@@ -59,6 +60,7 @@
         },
         "data_description": {
           "removal_rewind": "Das Lesegerät meldet „entfernt“ erst nach 2 s Entprellung. Um diesen Wert wird die gemerkte Stelle zurückgesetzt.",
+          "memory_hours": "Nach so vielen Stunden ohne erneutes Auflegen vergisst eine Karte ihre gemerkte Stelle und beginnt von vorne. 0 = nie vergessen.",
           "card_change_delay": "Wartezeit zwischen Speichern der alten und Starten der neuen Karte."
         }
       }

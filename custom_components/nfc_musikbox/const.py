@@ -49,6 +49,7 @@ OPT_SEEK_TOLERANCE: Final = "seek_tolerance"
 OPT_SEEK_ATTEMPTS: Final = "seek_attempts"
 OPT_SEEK_RETRY_DELAY: Final = "seek_retry_delay"
 OPT_SKIP_BACK: Final = "skip_back"
+OPT_MEMORY_HOURS: Final = "memory_hours"
 
 DEFAULT_OPTIONS: Final[dict[str, float]] = {
     OPT_CARD_CHANGE_DELAY: 0.6,
@@ -60,6 +61,7 @@ DEFAULT_OPTIONS: Final[dict[str, float]] = {
     OPT_SEEK_ATTEMPTS: 3,
     OPT_SEEK_RETRY_DELAY: 2.0,
     OPT_SKIP_BACK: 30.0,
+    OPT_MEMORY_HOURS: 0,
 }
 
 # Dispatcher-Signal: Karten, Positionen, gesehene Tags oder Lesegeräte geändert

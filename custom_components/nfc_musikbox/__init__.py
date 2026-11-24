@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 import logging
 from pathlib import Path
 from typing import Any
@@ -14,12 +15,14 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
 from .const import (
     DEFAULT_OPTIONS,
     DOMAIN,
+    OPT_MEMORY_HOURS,
     SIGNAL_CARD_ADDED,
     SIGNAL_UPDATED,
     SUBENTRY_READER,
@@ -137,11 +140,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) 
     store = CardStore(hass)
     await store.async_load()
 
+    options = {**DEFAULT_OPTIONS, **entry.options}
+    store.expire_positions(float(options[OPT_MEMORY_HOURS]))
+
     limits = LimitTracker(hass, store)
     readers: dict[str, ReaderConfig] = {}
     data = NfcMusikboxData(
         store=store,
-        options={**DEFAULT_OPTIONS, **entry.options},
+        options=options,
         limits=limits,
         notifier=ParentNotifier(hass, store, limits, readers),
         readers=readers,
@@ -189,6 +195,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) 
             controller.grant(minutes)
 
     data.notifier.async_start(_grant)
+
+    @callback
+    def _expire_positions(_now: datetime) -> None:
+        store.expire_positions(float(options[OPT_MEMORY_HOURS]))
+
+    entry.async_on_unload(async_track_time_interval(hass, _expire_positions, timedelta(hours=1)))
     entry.async_on_unload(
         store.async_add_listener(
             lambda event, tag_id: _async_handle_store_event(hass, entry, event, tag_id)

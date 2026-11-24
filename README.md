@@ -180,6 +180,7 @@ Außerdem: `nfc_musikbox.remove_card`, `nfc_musikbox.reset_position`,
 | Timeout für Titelsprung | 10 s | Warten auf die richtige Queue-Position |
 | Toleranz beim Spulen | 10 s | Ab hier gilt die Stelle als erreicht |
 | Spulversuche / Pause | 3 / 2 s | Wiederholungen von `media_seek` |
+| Gemerkte Stelle vergessen nach | 0 h (nie) | Nach so vielen Stunden ohne erneutes Auflegen beginnt die Karte wieder von vorne; geprüft beim Auflegen und stündlich |
 
 ## Umstieg von den Blueprints
 

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 import logging
+import time
 from typing import Any, Literal
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -140,13 +141,20 @@ class Position:
     q: int
     p: int
     t: str
+    # Unix-Zeit des Merkens; 0 = unbekannt (alter Eintrag)
+    ts: float = field(default=0.0, compare=False)
 
     def __post_init__(self) -> None:
         self.t = self.t[:TITLE_MAX_LEN]
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Position:
-        return cls(q=int(data.get("q", 0)), p=int(data.get("p", 0)), t=str(data.get("t", "")))
+        return cls(
+            q=int(data.get("q", 0)),
+            p=int(data.get("p", 0)),
+            t=str(data.get("t", "")),
+            ts=float(data.get("ts", 0.0)),
+        )
 
 
 @dataclass(slots=True)
@@ -273,11 +281,18 @@ class CardStore:
                 continue
             self.cards[card.tag_id] = card
         self.positions = {}
+        legacy_positions = False
         for tag_id, raw in data.get("positions", {}).items():
             try:
-                self.positions[tag_id] = Position.from_dict(raw)
+                position = Position.from_dict(raw)
             except TypeError, ValueError:
                 _LOGGER.warning("Ungültige Position für %s ignoriert: %s", tag_id, raw)
+                continue
+            if position.ts <= 0:
+                # Alter Eintrag ohne Zeitstempel: ab jetzt zählen, sonst würde er nie verfallen
+                position.ts = time.time()
+                legacy_positions = True
+            self.positions[tag_id] = position
         self.durations = {}
         for tag_id, raw in data.get("durations", {}).items():
             try:
@@ -298,6 +313,8 @@ class CardStore:
         )
         raw_usage = data.get("usage")
         self.usage = DailyUsage.from_dict(raw_usage if isinstance(raw_usage, dict) else {})
+        if legacy_positions:
+            self._schedule_save()
         _LOGGER.debug(
             "Store geladen: %d Karten, %d Positionen", len(self.cards), len(self.positions)
         )
@@ -372,9 +389,21 @@ class CardStore:
             if self.positions.pop(tag_id, None) is None:
                 return
         else:
+            if position.ts <= 0:
+                position.ts = time.time()
             self.positions[tag_id] = position
         self._schedule_save()
         self._notify(StoreEvent.POSITION, tag_id)
+
+    def expire_positions(self, max_age_hours: float, now: float | None = None) -> int:
+        """Gemerkte Stellen vergessen, die älter als max_age_hours sind (0 = nie)."""
+        if max_age_hours <= 0:
+            return 0
+        limit = (time.time() if now is None else now) - max_age_hours * 3600
+        expired = [tag for tag, pos in self.positions.items() if pos.ts < limit]
+        for tag_id in expired:
+            self.set_position(tag_id, None)
+        return len(expired)
 
     def learn_duration(self, tag_id: str, q: int, seconds: int, size: int) -> bool:
         """Titeldauer einer Karte lernen; gespeichert wird gebündelt, ohne Listener-Meldung."""

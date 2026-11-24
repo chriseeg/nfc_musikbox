@@ -84,6 +84,7 @@ class ReaderController:
         options: dict[str, Any],
         *,
         on_locked: Callable[[], None] | None = None,
+        on_loading: Callable[[bool], None] | None = None,
         limits: LimitTracker | None = None,
         notifier: ParentNotifier | None = None,
     ) -> None:
@@ -92,6 +93,7 @@ class ReaderController:
         self.store = store
         self.options = options
         self._on_locked = on_locked or (lambda: None)
+        self._on_loading = on_loading or (lambda _active: None)
         self.limits = limits
         self.notifier = notifier
         self._task: asyncio.Task[None] | None = None
@@ -232,7 +234,11 @@ class ReaderController:
             if placed_card is not None:
                 if removed is not None:
                     await asyncio.sleep(float(self.options[OPT_CARD_CHANGE_DELAY]))
-                await self._start_card(placed_card)
+                self._on_loading(True)
+                try:
+                    await self._start_card(placed_card)
+                finally:
+                    self._on_loading(False)
         except HomeAssistantError as err:
             _LOGGER.error("%s: Fehler bei %s -> %s: %s", self.name, removed, placed, err)
 

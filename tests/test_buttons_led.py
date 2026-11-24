@@ -9,7 +9,7 @@ from typing import Any
 from homeassistant.core import CoreState, HomeAssistant, ServiceCall
 from homeassistant.util import dt as dt_util
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.nfc_musikbox.store import Card, Position
 
@@ -195,7 +195,49 @@ async def test_led_sent_on_setup_and_state_change(
     await settle(hass)
     hass.states.async_set(PLAYER, "buffering")
     await settle(hass)
-    assert led_calls == ["idle", "playing", "paused", "playing"]
+    assert led_calls == ["idle", "playing", "paused", "loading"]
+
+
+async def test_led_loading_until_playback_runs(
+    hass: HomeAssistant, player: FakeSonos, led_calls: list[str]
+) -> None:
+    entry = await setup(hass)
+    led = next(iter(entry.runtime_data.leds.values()))
+    led_calls.clear()
+
+    led.set_loading(True)
+    await settle(hass)
+    assert led_calls == ["loading"]
+
+    # Startvorgang fertig, der Player lädt aber noch: weiter blinken
+    player.set_paused(q=1, pos=0)
+    await settle(hass)
+    led.set_loading(False)
+    await settle(hass)
+    assert led_calls[-1] == "loading"
+
+    player.set_playing(q=1, pos=0)
+    await settle(hass)
+    assert led_calls[-1] == "playing"
+
+
+async def test_led_loading_ends_after_grace_when_already_playing(
+    hass: HomeAssistant, player: FakeSonos, led_calls: list[str]
+) -> None:
+    entry = await setup(hass)
+    led = next(iter(entry.runtime_data.leds.values()))
+    player.set_playing(q=1, pos=0)
+    await settle(hass)
+    led_calls.clear()
+
+    led.set_loading(True)
+    led.set_loading(False)
+    await settle(hass)
+    assert led_calls[-1] == "loading"
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=4))
+    await settle(hass)
+    assert led_calls[-1] == "playing"
 
 
 async def test_led_resent_when_reader_online(

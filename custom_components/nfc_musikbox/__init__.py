@@ -183,6 +183,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NfcMusikboxConfigEntry) 
             store,
             data.options,
             on_locked=led.flash_locked,
+            on_loading=led.set_loading,
             limits=limits,
             notifier=data.notifier,
         )

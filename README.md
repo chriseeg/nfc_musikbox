@@ -113,8 +113,8 @@ Länge des aktuellen Titels), deshalb gibt es keinen Countdown „bis das Hörsp
 Aktualisiert wird nur bei Play/Pause und Kapitelwechsel; beim Abziehen endet sie.
 Voraussetzung: iOS 17.2+, Companion-App 2026.9+ (Android: „Live Updates“).
 
-Bei gesperrter Karte blinken mit **Firmware v4** (`firmware/nfc-musikbox.yaml`) beide LEDs
-dreimal. Mit älterer Firmware passiert sichtbar einfach nichts.
+Bei gesperrter Karte blinkt die LED mit der aktuellen Firmware zweimal „blinkblink, Pause“.
+Mit älterer Firmware passiert sichtbar einfach nichts.
 
 ## Tasten und LED
 
@@ -129,6 +129,11 @@ Tasten wirken nur, solange eine Karte aufliegt.
 Ein Tastendruck während des Fortsetzens bricht das Fortsetzen ab.
 
 Die LED zeigt den Zustand des Lautsprechers (Play-LED an = spielt, pulsiert = Pause).
+Während eine Karte ihr Medium lädt (Start, Titelsprung, Fortsetzen), bis die Wiedergabe wirklich
+läuft, blinkt sie schnell (Zustand `loading`, auch bei Puffern, höchstens 30 s). Wird die Karte
+entfernt, während die Wiedergabe weiterlaufen darf (Karte ohne „Nur beim Aufliegen spielen“),
+leuchtet sie leicht, bis die Wiedergabe endet. Beides braucht die aktuelle Firmware; ältere zeigt
+„loading“ wie einen schwachen Dauerschein.
 Home Assistant sendet ihn bei jeder Zustandsänderung, beim Start und wenn sich das
 Lesegerät neu verbindet (`esphome.nfc_reader_online`).
 

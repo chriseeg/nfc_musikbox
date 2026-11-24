@@ -8,6 +8,7 @@ from typing import Any
 
 from homeassistant.const import ATTR_DEVICE_ID, EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import (
+    CALLBACK_TYPE,
     CoreState,
     Event,
     EventStateChangedData,
@@ -15,15 +16,19 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 
 from .const import EVENT_READER_ONLINE
 from .reader import ESPHOME_DOMAIN, ReaderConfig, esphome_node_name
 
 _LOGGER = logging.getLogger(__name__)
 
-# Die Firmware kennt nur "playing" und "paused"; Puffern soll wie Spielen aussehen
-STATE_MAP = {"buffering": "playing"}
+# Die Firmware kennt "playing", "paused" und "loading" (Blinken, bis die Wiedergabe läuft)
+STATE_MAP = {"buffering": "loading"}
+# Längstens so lange blinkt die LED, falls die Wiedergabe nie startet
+LOADING_TIMEOUT = 30.0
+# Läuft der Player beim Ende des Startvorgangs schon, bleibt das Blinken noch so lange
+LOADING_GRACE = 3.0
 
 
 class LedSync:
@@ -40,6 +45,9 @@ class LedSync:
         self._lock = asyncio.Lock()
         self._unsub: list[Any] = []
         self._tasks: set[asyncio.Task[None]] = set()
+        self._loading = False
+        self._load_done = False
+        self._load_timers: list[CALLBACK_TYPE] = []
 
     @callback
     def async_start(self) -> None:
@@ -62,6 +70,7 @@ class LedSync:
         for unsub in self._unsub:
             unsub()
         self._unsub.clear()
+        self._cancel_load_timers()
         for task in self._tasks:
             task.cancel()
 
@@ -75,7 +84,48 @@ class LedSync:
         old, new = event.data["old_state"], event.data["new_state"]
         if old is not None and new is not None and old.state == new.state:
             return
+        if self._loading:
+            self._cancel_load_timers()
+            if self._load_done and new is not None and new.state == "playing":
+                self._loading = False
         self.schedule()
+
+    @callback
+    def set_loading(self, active: bool) -> None:
+        """Blinken, solange eine Karte ihr Medium startet, bis die Wiedergabe wirklich läuft."""
+        self._cancel_load_timers()
+        if active:
+            self._loading = True
+            self._load_done = False
+            self._load_timers.append(
+                async_call_later(self.hass, LOADING_TIMEOUT, self._end_loading)
+            )
+        else:
+            self._load_done = True
+            state = self.hass.states.get(self.reader.player)
+            if state is not None and state.state == "playing":
+                self._load_timers.append(
+                    async_call_later(self.hass, LOADING_GRACE, self._end_loading)
+                )
+            elif state is None or state.state not in ("buffering", "paused", "idle", "on"):
+                self._loading = False
+            else:
+                # Der Player startet noch: bis zum Zustand "playing" (oder Timeout) weiterblinken
+                self._load_timers.append(
+                    async_call_later(self.hass, LOADING_TIMEOUT, self._end_loading)
+                )
+        self.schedule()
+
+    @callback
+    def _end_loading(self, _now: Any) -> None:
+        self._loading = False
+        self._load_timers.clear()
+        self.schedule()
+
+    def _cancel_load_timers(self) -> None:
+        for cancel in self._load_timers:
+            cancel()
+        self._load_timers.clear()
 
     @callback
     def _handle_online(self, event: Event[dict[str, Any]]) -> None:
@@ -93,6 +143,8 @@ class LedSync:
     def current_value(self) -> str:
         state = self.hass.states.get(self.reader.player)
         raw = state.state if state is not None else "unavailable"
+        if self._loading:
+            return "loading"
         return STATE_MAP.get(raw, raw)
 
     @callback

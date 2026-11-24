@@ -30,6 +30,7 @@ from .const import (
     DEFAULT_OPTIONS,
     DOMAIN,
     OPT_CARD_CHANGE_DELAY,
+    OPT_MEMORY_HOURS,
     OPT_QUEUE_JUMP_TIMEOUT,
     OPT_REMOVAL_REWIND,
     OPT_RESTORE_SETTLE,
@@ -142,6 +143,15 @@ OPTIONS_SELECTORS: dict[str, NumberSelector] = {
     OPT_CARD_CHANGE_DELAY: _seconds(0, 5),
     OPT_REMOVAL_REWIND: _seconds(0, 10),
     OPT_SKIP_BACK: _seconds(5, 120, 1),
+    OPT_MEMORY_HOURS: NumberSelector(
+        NumberSelectorConfig(
+            min=0,
+            max=720,
+            step=1,
+            unit_of_measurement="h",
+            mode=NumberSelectorMode.BOX,
+        )
+    ),
     OPT_RESTORE_SETTLE: _seconds(0, 10),
     OPT_RESTORE_START_TIMEOUT: _seconds(5, 60, 1),
     OPT_QUEUE_JUMP_TIMEOUT: _seconds(2, 60, 1),
@@ -160,6 +170,7 @@ class NfcMusikboxOptionsFlow(OptionsFlow):
         if user_input is not None:
             data = dict(user_input)
             data[OPT_SEEK_ATTEMPTS] = int(data[OPT_SEEK_ATTEMPTS])
+            data[OPT_MEMORY_HOURS] = int(data[OPT_MEMORY_HOURS])
             return self.async_create_entry(data=data)
         current = {**DEFAULT_OPTIONS, **self.config_entry.options}
         schema = vol.Schema(

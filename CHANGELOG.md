@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Option „Gemerkte Stelle vergessen nach (h)“**: Nach der eingestellten Zahl Stunden ohne erneutes
+  Auflegen vergisst eine Karte ihre gemerkte Stelle und beginnt von vorne (z. B. 12 oder 48 h).
+  Standard 0 = nie. Gemerkte Stellen tragen dafür einen Zeitstempel; bestehende Stellen zählen ab
+  dem Update.
+
 ## [0.11.0] - 2026-11-24
 
 ### Hinzugefügt

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 from homeassistant.core import HomeAssistant
 import pytest
@@ -115,6 +116,34 @@ async def test_place_restores_queue_and_position(hass: HomeAssistant, player: Fa
     assert player.services("sonos.play_queue") == [{"queue_position": 1}]
     assert player.services("media_player.media_seek") == [{"seek_position": 4210}]
     assert player.q == 2
+
+
+async def test_place_forgets_position_after_memory_hours(
+    hass: HomeAssistant, player: FakeSonos
+) -> None:
+    entry = await setup(hass, tonie())
+    entry.runtime_data.options["memory_hours"] = 12
+    store = entry.runtime_data.store
+    store.set_position(A, Position(q=2, p=4210, t="Kapitel 2", ts=time.time() - 13 * 3600))
+
+    await card(hass, A)
+
+    assert player.service_names == ["media_player.play_media"]
+    assert A not in store.positions
+
+
+async def test_place_keeps_position_within_memory_hours(
+    hass: HomeAssistant, player: FakeSonos
+) -> None:
+    entry = await setup(hass, tonie())
+    entry.runtime_data.options["memory_hours"] = 12
+    entry.runtime_data.store.set_position(
+        A, Position(q=2, p=4210, t="Kapitel 2", ts=time.time() - 11 * 3600)
+    )
+
+    await card(hass, A)
+
+    assert "media_player.media_seek" in player.service_names
 
 
 async def test_place_restore_first_track_only_seeks(hass: HomeAssistant, player: FakeSonos) -> None:

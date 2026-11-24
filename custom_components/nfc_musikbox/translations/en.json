@@ -49,6 +49,7 @@
         "data": {
           "card_change_delay": "Pause on card change",
           "removal_rewind": "Rewind on removal",
+          "memory_hours": "Forget stored position after (h)",
           "skip_back": "Back button (short) skips",
           "restore_settle": "Delay after starting the media",
           "restore_start_timeout": "Timeout until playback starts",
@@ -59,6 +60,7 @@
         },
         "data_description": {
           "removal_rewind": "The reader reports “removed” only after a 2 s debounce. The stored position is rewound by this value.",
+          "memory_hours": "After this many hours without the card being placed again, its stored position is forgotten and it starts from the beginning. 0 = never forget.",
           "card_change_delay": "Delay between saving the old card and starting the new one."
         }
       }

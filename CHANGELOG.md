@@ -4,6 +4,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **LED beim Laden**: Während eine Karte ihr Medium startet, bis die Wiedergabe wirklich läuft
+  (auch bei Puffern), sendet die Integration den Zustand `loading`. Die Firmware blinkt dann
+  schnell. Zeitlimit 30 s.
+- **Firmware**: leichte Leuchte ohne Karte, solange die Wiedergabe weiterlaufen darf; Sperr-Animation
+  „Limit erreicht“ jetzt zweimal „blinkblink, Pause“.
+
 ## [0.12.0] - 2026-11-24
 
 ### Hinzugefügt

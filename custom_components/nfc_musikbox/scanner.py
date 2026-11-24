@@ -252,7 +252,7 @@ class ReaderController:
             await asyncio.wait([previous])
         _LOGGER.info("%s: Test-Wiedergabe %s (fortsetzen: %s)", self.name, card.name, resume)
         try:
-            if resume and card.mode == "tonie":
+            if resume and card.only_while_lying:
                 await self._on_placed(card)
             elif card.media is not None:
                 await self._apply_start_volume()
@@ -270,7 +270,7 @@ class ReaderController:
         return card
 
     async def _on_removed(self, card: Card, *, still_playing: bool, skip_save: bool) -> None:
-        if card.mode != "tonie":
+        if not card.only_while_lying:
             return
         state = self.player.state
         if skip_save:
@@ -353,8 +353,12 @@ class ReaderController:
             _LOGGER.info("%s: %s hat kein Medium", self.name, card.name)
             return
         await self._apply_start_volume()
-        if card.mode == "simple":
-            _LOGGER.info("%s: %s aufgelegt, starte Medium (Musik-Modus)", self.name, card.name)
+        if not card.only_while_lying:
+            _LOGGER.info(
+                "%s: %s aufgelegt, starte Medium von vorne (nicht nur beim Aufliegen)",
+                self.name,
+                card.name,
+            )
             await self._apply_play_mode(card)
             await self.player.async_play_media(card.media)
             return
@@ -512,7 +516,7 @@ class ReaderController:
         """Stelle merken (Hörspiel) und pausieren, wie beim Abziehen; Karte sperren."""
         self._cancel_sleep_timer()
         self._set_blocked(card, reason)
-        if card.mode == "tonie":
+        if card.only_while_lying:
             position = snapshot_position(self.player.state)
             if position is not None:
                 self.store.set_position(card.tag_id, position)

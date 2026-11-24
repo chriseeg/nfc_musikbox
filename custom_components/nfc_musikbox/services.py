@@ -33,6 +33,7 @@ ATTR_TAG_ID = "tag_id"
 ATTR_NAME = "name"
 ATTR_MEDIA = "media"
 ATTR_MODE = "mode"
+ATTR_ONLY_WHILE_LYING = "only_while_lying"
 ATTR_ENABLED = "enabled"
 ATTR_READERS = "readers"
 ATTR_SHUFFLE = "shuffle"
@@ -55,6 +56,7 @@ ASSIGN_SCHEMA = vol.Schema(
         vol.Optional(ATTR_NAME): cv.string,
         vol.Required(ATTR_MEDIA): MEDIA_SCHEMA,
         vol.Optional(ATTR_MODE, default="tonie"): vol.In(CARD_MODES),
+        vol.Optional(ATTR_ONLY_WHILE_LYING): cv.boolean,
         vol.Optional(ATTR_ENABLED, default=True): cv.boolean,
         vol.Optional(ATTR_READERS, default=list): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional(ATTR_SHUFFLE): cv.boolean,
@@ -146,6 +148,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
             or str((media.get("metadata") or {}).get("title") or tag_id),
             media=media,
             mode=call.data[ATTR_MODE],
+            only_while_lying=call.data.get(ATTR_ONLY_WHILE_LYING),
             enabled=call.data[ATTR_ENABLED],
             readers=_reader_subentries(hass, call.data[ATTR_READERS]),
             shuffle=call.data.get(ATTR_SHUFFLE),

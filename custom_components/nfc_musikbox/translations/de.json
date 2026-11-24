@@ -83,6 +83,9 @@
       "enabled": {
         "name": "Aktiv"
       },
+      "only_while_lying": {
+        "name": "Nur beim Aufliegen spielen"
+      },
       "parental": {
         "name": "Kindersicherung"
       }
@@ -137,7 +140,11 @@
         },
         "mode": {
           "name": "Betriebsart",
-          "description": "Hörspiel: läuft nur, solange die Karte liegt, Stelle wird gemerkt. Musik: Karte startet die Wiedergabe, mit eigenen Einstellungen für Zufall und Wiederholen."
+          "description": "Hörspiel: Zufallswiedergabe wird beim Start ausgeschaltet. Musik: eigene Einstellungen für Zufall und Wiederholen."
+        },
+        "only_while_lying": {
+          "name": "Nur beim Aufliegen spielen",
+          "description": "Wiedergabe nur, solange die Karte liegt: Abziehen pausiert und merkt die Stelle, Auflegen setzt fort. Leer lassen = Vorgabe der Betriebsart (Hörspiel an, Musik aus)."
         },
         "enabled": {
           "name": "Aktiv",

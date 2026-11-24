@@ -20,6 +20,9 @@ assign_card:
           options:
             - tonie
             - simple
+    only_while_lying:
+      selector:
+        boolean:
     enabled:
       default: true
       selector:

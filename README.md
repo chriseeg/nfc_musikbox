@@ -25,7 +25,14 @@ Pro Lesegerät entsteht ein Gerät mit den Diagnose-Entitäten **„Aktuelle Kar
 
 ## Verhalten
 
-**Hörspiel-Modus** (Standard, intern `tonie`)
+Zwei Einstellungen pro Karte, voneinander unabhängig:
+
+- **Betriebsart** (Hörspiel oder Musik) bestimmt nur Zufallswiedergabe und Wiederholen.
+- **Nur beim Aufliegen spielen** (Tonie-Funktion, Schalter am Kartengerät und im Panel) bestimmt,
+  ob die Wiedergabe an der Karte hängt. Vorgabe: bei Hörspiel an, bei Musik aus. Jede
+  Kombination ist möglich, z. B. Musik, die nur beim Aufliegen läuft.
+
+**Tonie-Funktion an** (Vorgabe im Hörspiel-Modus, intern `tonie`)
 
 | Aktion | Ergebnis |
 |---|---|
@@ -38,9 +45,13 @@ Gemerkt werden Titelnummer in der Queue, Sekunde und Titelname. Fortsetzen an de
 klappt nur mit Sonos (Titelsprung per `sonos.play_queue`, dann Spulen). Andere Player
 starten das Medium von vorne.
 
-**Musik-Modus** (intern `simple`): Auflegen startet das Medium von vorne, Abziehen tut
-nichts. Pro Karte einstellbar: **Zufallswiedergabe** und **Wiederholen** (aus/alle/Titel)
-oder „nicht ändern“.
+**Tonie-Funktion aus** (Vorgabe im Musik-Modus, intern `simple`): Auflegen startet das Medium
+von vorne, Abziehen tut nichts.
+
+**Musik-Modus**: pro Karte einstellbar sind **Zufallswiedergabe** und **Wiederholen**
+(aus/alle/Titel) oder „nicht ändern“. Mit Zufallswiedergabe und eingeschalteter
+Tonie-Funktion wird die Titelnummer der Queue gemerkt, die Reihenfolge ist beim Fortsetzen
+aber neu gemischt.
 
 Der Hörspiel-Modus schaltet die Zufallswiedergabe beim Start immer aus: Sonos merkt sich
 Shuffle pro Lautsprecher, und mit Shuffle würde die gemerkte Titelnummer nicht passen.
@@ -130,13 +141,13 @@ In der Seitenleiste erscheint **Musikkarten** (nur für Administratoren):
 - **Zugeordnete Karten**: Cover, Medium, Lautsprecher, letzter Scan, gemerkte Stelle,
   ▶ spielt die Karte zum Testen von vorne ab.
 - **Karte bearbeiten**: Name (wird auch in die Tag-Verwaltung übernommen), Medium über den
-  Medien-Browser, Betriebsart, gemerkte Stelle zurücksetzen, Lesegeräte, aktiv/inaktiv,
+  Medien-Browser, Betriebsart, „Nur beim Aufliegen spielen“, gemerkte Stelle zurücksetzen, Lesegeräte, aktiv/inaktiv,
   Test „Von vorne“ / „Fortsetzen“, Zuordnung löschen.
 - **Lesegeräte** (Zahnrad): Status und Lautsprecher je Lesegerät; Hinzufügen und Ändern
   über die Integrationsseite.
 
 Pro Karte entsteht außerdem ein Gerät mit den Entitäten **Aktiv** (Schalter),
-**Betriebsart** (Auswahl) und **Gemerkte Stelle** (Sensor), z. B. für Automationen oder
+**Nur beim Aufliegen spielen** (Schalter), **Betriebsart** (Auswahl) und **Gemerkte Stelle** (Sensor), z. B. für Automationen oder
 ein Dashboard.
 
 ## Karten per Dienst zuordnen
@@ -151,6 +162,7 @@ data:
     media_content_id: FV:2/46
     media_content_type: favorite_item_id
   mode: tonie
+  only_while_lying: true  # optional; ohne Angabe nach der Betriebsart
 ```
 
 Außerdem: `nfc_musikbox.remove_card`, `nfc_musikbox.reset_position`,

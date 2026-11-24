@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-24
+
 ### Hinzugefügt
 - **„Nur beim Aufliegen spielen“** (Tonie-Funktion) ist jetzt unabhängig von der Betriebsart
   einstellbar: Schalter pro Karte (Entität und Panel), Feld `only_while_lying` in

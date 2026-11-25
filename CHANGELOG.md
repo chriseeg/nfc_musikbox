@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-25
+
 ### Hinzugefügt
 - **Überblenden pro Karte** (Sonos): an, aus oder unverändert, im Panel und im Dienst
   `assign_card` (`crossfade`). Der Überblenden-Schalter wird über das Gerät des Lautsprechers

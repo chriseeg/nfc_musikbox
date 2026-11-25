@@ -164,6 +164,10 @@
           "name": "Repeat",
           "description": "Music mode only. Leave empty = do not change the speaker setting."
         },
+        "crossfade": {
+          "name": "Crossfade",
+          "description": "Sonos crossfade between tracks. Leave empty = do not change the speaker setting."
+        },
         "limited": {
           "name": "Daily limit applies",
           "description": "Card counts towards the daily limits of the parental controls (number of stories, listening time)."

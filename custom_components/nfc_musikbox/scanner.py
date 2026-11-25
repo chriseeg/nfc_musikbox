@@ -108,6 +108,8 @@ class ReaderController:
         self._sleep_deadline: datetime | None = None
         self._restore_volume: float | None = None  # nach abgebrochenem Ausblenden
         self._fading = False
+        # Zuletzt gestartete Karte; ein erneutes Auflegen unterbricht ihre Wiedergabe nicht
+        self._last_started: str | None = None
 
     @property
     def name(self) -> str:
@@ -262,6 +264,7 @@ class ReaderController:
             if resume and card.only_while_lying:
                 await self._on_placed(card)
             elif card.media is not None:
+                self._last_started = card.tag_id
                 await self._apply_start_volume()
                 await self._apply_play_mode(card)
                 await self.player.async_play_media(card.media)
@@ -339,7 +342,7 @@ class ReaderController:
             _LOGGER.warning("%s: Startlautstärke nicht gesetzt: %s", self.name, err)
 
     async def _apply_play_mode(self, card: Card) -> None:
-        """Shuffle/Repeat vor dem Start setzen.
+        """Überblenden, Shuffle und Repeat vor dem Start setzen.
 
         Sonos merkt sich Shuffle pro Lautsprecher. Ein Hörspiel muss deshalb immer
         ohne Shuffle starten, sonst stimmt die gemerkte Titelnummer nicht.
@@ -348,17 +351,27 @@ class ReaderController:
         repeat = None if card.mode == "tonie" else card.repeat
         player = self.player
         try:
+            if card.crossfade is not None:
+                await player.async_set_crossfade(card.crossfade)
             if shuffle is not None and player.supports(MediaPlayerEntityFeature.SHUFFLE_SET):
                 await player.async_set_shuffle(shuffle)
             if repeat is not None and player.supports(MediaPlayerEntityFeature.REPEAT_SET):
                 await player.async_set_repeat(repeat)
         except HomeAssistantError as err:
-            _LOGGER.warning("%s: Shuffle/Wiederholen nicht gesetzt: %s", self.name, err)
+            _LOGGER.warning("%s: Überblenden/Shuffle/Wiederholen nicht gesetzt: %s", self.name, err)
+
+    def _still_playing(self, card: Card) -> bool:
+        """Dieselbe Karte war zuletzt dran und der Player spielt noch (nichts dazwischen)."""
+        state = self.player.state
+        return (
+            self._last_started == card.tag_id and state is not None and state.state == STATE_PLAYING
+        )
 
     async def _on_placed(self, card: Card) -> None:
         if card.media is None:
             _LOGGER.info("%s: %s hat kein Medium", self.name, card.name)
             return
+        self._last_started = card.tag_id
         await self._apply_start_volume()
         if not card.only_while_lying:
             _LOGGER.info(
@@ -430,6 +443,12 @@ class ReaderController:
 
     async def _start_card(self, card: Card) -> None:
         """Karte starten und bei den Tageslimits anrechnen."""
+        if card.media is not None and not card.only_while_lying and self._still_playing(card):
+            _LOGGER.info(
+                "%s: %s aufgelegt, läuft noch: Wiedergabe bleibt unberührt", self.name, card.name
+            )
+            self._start_sleep_timer(card)
+            return
         if self.limits is not None and self._parental:
             self.limits.register_start(card)
         await self._on_placed(card)

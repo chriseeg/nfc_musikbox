@@ -465,6 +465,8 @@
             <label class="f">Wiederholen</label><div class="seg compact">
             ${[[null, 'Unverändert'], ['off', 'Aus'], ['all', 'Alle'], ['one', 'Titel']].map(([v, l]) => `<button class="${sh.repeat === v ? 'on' : ''}" data-a="set-repeat" data-v="${v}">${l}</button>`).join('')}</div>
             <p class="hint">„Unverändert“ lässt die Einstellung des Lautsprechers, wie sie ist.</p>` : `<p class="hint">Zufallswiedergabe wird beim Start ausgeschaltet, damit die gemerkte Stelle stimmt.</p>`}
+          <label class="f">Überblenden (Sonos)</label><div class="seg compact">
+            ${[[null, 'Unverändert'], [true, 'An'], [false, 'Aus']].map(([v, l]) => `<button class="${sh.crossfade === v ? 'on' : ''}" data-a="set-crossfade" data-v="${v}">${l}</button>`).join('')}</div>
           ${sh.lying && sh.edit ? `<label class="f">Gemerkte Stelle</label><div class="posbox">${ic('bookmark-outline')}
             <span class="t">${pos ? `<b>${esc(posMain(pos))}</b><small>${esc(pos.t || 'Titel unbekannt')}</small>` : '<b>Noch keine Stelle</b><small>Wird beim Abziehen der Karte gemerkt.</small>'}</span>
             ${pos ? '<button class="btn small" data-a="reset-pos">Zurücksetzen</button>' : ''}</div>` : ''}
@@ -616,6 +618,7 @@
             if (!S.sheet.edit) S.sheet.lying = el.dataset.m === 'tonie';
             S.sheet.mode = el.dataset.m; this.render(); break;
           case 'toggle-lying': S.sheet.lying = !S.sheet.lying; this.render(); break;
+          case 'set-crossfade': S.sheet.crossfade = JSON.parse(el.dataset.v); this.render(); break;
           case 'set-shuffle': S.sheet.shuffle = JSON.parse(el.dataset.v); this.render(); break;
           case 'set-repeat': S.sheet.repeat = el.dataset.v === 'null' ? null : el.dataset.v; this.render(); break;
           case 'toggle-enabled': S.sheet.enabled = !S.sheet.enabled; this.render(); break;
@@ -672,6 +675,7 @@
         edit: edit && !!card, tag_id: tagId, name: card ? card.name : (t && t.name !== tagId ? t.name : ''),
         media: card ? card.media : null, mode: card ? card.mode : 'tonie', lying: card ? !!card.only_while_lying : true, enabled: card ? card.enabled : true,
         shuffle: card && typeof card.shuffle === 'boolean' ? card.shuffle : null, repeat: card ? card.repeat || null : null,
+        crossfade: card && typeof card.crossfade === 'boolean' ? card.crossfade : null,
         limited: card ? !!card.limited : this.hasLimits,
         sel: new Set(sel), error: null, saving: false,
       };
@@ -739,7 +743,7 @@
       try {
         // Alle ausgewählt = an allen Lesegeräten, auch künftigen
         const readers = sel.length === ready.length ? [] : sel;
-        await this.ws({ type: `${DOMAIN}/card/save`, tag_id: sh.tag_id, name: sh.name, media: sh.media, mode: sh.mode, only_while_lying: sh.lying, enabled: sh.enabled, readers, shuffle: sh.shuffle, repeat: sh.repeat, limited: sh.limited });
+        await this.ws({ type: `${DOMAIN}/card/save`, tag_id: sh.tag_id, name: sh.name, media: sh.media, mode: sh.mode, only_while_lying: sh.lying, enabled: sh.enabled, readers, shuffle: sh.shuffle, repeat: sh.repeat, crossfade: sh.crossfade, limited: sh.limited });
         await this._syncTagName(sh.tag_id, sh.name);
         this.S.sheet = null;
         this.render();

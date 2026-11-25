@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.setup import async_setup_component
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -179,3 +179,125 @@ async def test_store_roundtrip_new_fields(hass: HomeAssistant) -> None:
     assert (other.cards[A].shuffle, other.cards[A].repeat) == (False, "off")
     assert other.get_reader_settings("r1").start_volume == 100
     assert other.get_reader_settings("unbekannt").start_volume == 0
+
+
+# ---------- Überblenden ----------
+
+CROSSFADE = "switch.sonos_crossfade"
+
+
+def add_crossfade(hass: HomeAssistant, *, state: str) -> list[tuple[str, str]]:
+    """Überblenden-Schalter am selben Gerät wie der Player; protokolliert die Dienste.
+
+    Nach dem Einrichten der Integration aufrufen, sonst ersetzt deren Schalter-Plattform
+    die Fake-Dienste.
+    """
+    sonos_entry = MockConfigEntry(domain="sonos")
+    sonos_entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=sonos_entry.entry_id, identifiers={("sonos", "RINCON_X")}
+    )
+    registry = er.async_get(hass)
+    registry.async_update_entity(PLAYER, device_id=device.id)
+    registry.async_get_or_create(
+        "switch",
+        "sonos",
+        "RINCON_X-cross_fade",
+        suggested_object_id="sonos_crossfade",
+        device_id=device.id,
+        config_entry=sonos_entry,
+    )
+    hass.states.async_set(CROSSFADE, state)
+    calls: list[tuple[str, str]] = []
+
+    async def handle(call: ServiceCall) -> None:
+        calls.append((call.service, call.data["entity_id"]))
+
+    for service in ("turn_on", "turn_off"):
+        hass.services.async_register("switch", service, handle)
+    return calls
+
+
+async def test_crossfade_on_is_set_before_play(hass: HomeAssistant, player: FakeSonos) -> None:
+    await setup(hass, Card(A, "M", MEDIA_A, crossfade=True))
+    calls = add_crossfade(hass, state="off")
+    await card(hass, A)
+    assert calls == [("turn_on", CROSSFADE)]
+    assert player.service_names == ["media_player.shuffle_set", "media_player.play_media"]
+
+
+async def test_crossfade_off_is_set(hass: HomeAssistant, player: FakeSonos) -> None:
+    await setup(hass, Card(A, "M", MEDIA_A, mode="simple", crossfade=False))
+    calls = add_crossfade(hass, state="on")
+    await card(hass, A)
+    assert calls == [("turn_off", CROSSFADE)]
+
+
+async def test_crossfade_already_in_state_is_not_touched(
+    hass: HomeAssistant, player: FakeSonos
+) -> None:
+    await setup(hass, Card(A, "M", MEDIA_A, crossfade=True))
+    calls = add_crossfade(hass, state="on")
+    await card(hass, A)
+    assert calls == []
+
+
+async def test_crossfade_unchanged_by_default(hass: HomeAssistant, player: FakeSonos) -> None:
+    await setup(hass, Card(A, "M", MEDIA_A))
+    calls = add_crossfade(hass, state="on")
+    await card(hass, A)
+    assert calls == []
+    assert Card.from_dict({"tag_id": A}).crossfade is None
+    assert Card.from_dict({"tag_id": A, "crossfade": False}).crossfade is False
+
+
+async def test_crossfade_missing_switch_does_not_block_playback(
+    hass: HomeAssistant, player: FakeSonos
+) -> None:
+    await setup(hass, Card(A, "M", MEDIA_A, crossfade=True))
+    await card(hass, A)
+    assert "media_player.play_media" in player.service_names
+
+
+# ---------- Erneutes Auflegen während der Wiedergabe ----------
+
+B = "CA-09-0C-06"
+
+
+async def test_replace_while_still_playing_does_not_restart(
+    hass: HomeAssistant, player: FakeSonos
+) -> None:
+    await setup(hass, Card(A, "M", MEDIA_A, only_while_lying=False))
+    await card(hass, A)
+    player.set_playing(q=2, pos=100)
+    await card(hass, "none")
+    player.calls.clear()
+    await card(hass, A)
+    assert player.service_names == []
+
+
+async def test_replace_after_other_card_restarts(hass: HomeAssistant, player: FakeSonos) -> None:
+    await setup(
+        hass,
+        Card(A, "M", MEDIA_A, only_while_lying=False),
+        Card(B, "N", MEDIA_A, only_while_lying=False),
+    )
+    await card(hass, A)
+    await card(hass, "none")
+    await card(hass, B)
+    player.set_playing(q=1, pos=5)
+    await card(hass, "none")
+    player.calls.clear()
+    await card(hass, A)
+    assert "media_player.play_media" in player.service_names
+
+
+async def test_replace_after_pause_restarts(hass: HomeAssistant, player: FakeSonos) -> None:
+    await setup(hass, Card(A, "M", MEDIA_A, only_while_lying=False))
+    await card(hass, A)
+    player.set_playing(q=2, pos=100)
+    await card(hass, "none")
+    player.set_paused(q=2, pos=100)
+    player.calls.clear()
+    await card(hass, A)
+    assert "media_player.play_media" in player.service_names

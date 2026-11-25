@@ -135,6 +135,7 @@ def ws_subscribe(
         vol.Optional("readers", default=list): [cv.string],
         vol.Optional("shuffle", default=None): vol.Any(None, cv.boolean),
         vol.Optional("repeat", default=None): vol.Any(None, vol.In(REPEAT_MODES)),
+        vol.Optional("crossfade", default=None): vol.Any(None, cv.boolean),
         vol.Optional("limited", default=False): cv.boolean,
     }
 )
@@ -159,6 +160,7 @@ async def ws_save_card(
         readers=msg["readers"],
         shuffle=msg["shuffle"],
         repeat=msg["repeat"],
+        crossfade=msg["crossfade"],
         limited=msg["limited"],
     )
     await data.store.async_set_card(card)

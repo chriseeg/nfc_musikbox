@@ -220,6 +220,8 @@ class Card:
     # Nur im Musik-Modus; None = Einstellung des Players nicht ändern
     shuffle: bool | None = None
     repeat: RepeatMode | None = None
+    # Sonos-Überblenden (in beiden Modi); None = Einstellung des Players nicht ändern
+    crossfade: bool | None = None
     # Kindersicherung: Karte zählt zum Tageslimit (Anzahl und Hörzeit)
     limited: bool = False
     # Tonie-Funktion: Wiedergabe nur, solange die Karte liegt (Pause beim Abziehen, Stelle merken,
@@ -236,6 +238,7 @@ class Card:
         mode = data.get("mode", "tonie")
         shuffle = data.get("shuffle")
         repeat = data.get("repeat")
+        crossfade = data.get("crossfade")
         return cls(
             tag_id=data["tag_id"],
             name=data.get("name") or data["tag_id"],
@@ -245,6 +248,7 @@ class Card:
             readers=list(data.get("readers", [])),
             shuffle=shuffle if isinstance(shuffle, bool) else None,
             repeat=repeat if repeat in REPEAT_MODES else None,
+            crossfade=crossfade if isinstance(crossfade, bool) else None,
             limited=bool(data.get("limited", False)),
             only_while_lying=(
                 data["only_while_lying"] if isinstance(data.get("only_while_lying"), bool) else None

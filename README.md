@@ -46,7 +46,14 @@ klappt nur mit Sonos (Titelsprung per `sonos.play_queue`, dann Spulen). Andere P
 starten das Medium von vorne.
 
 **Tonie-Funktion aus** (Vorgabe im Musik-Modus, intern `simple`): Auflegen startet das Medium
-von vorne, Abziehen tut nichts.
+von vorne, Abziehen tut nichts. Legst du dieselbe Karte erneut auf, während ihr Medium noch
+spielt und seitdem keine andere Karte gestartet wurde, bleibt die Wiedergabe unberührt. Wurde
+zwischendurch eine andere Karte gespielt oder pausiert der Player, startet sie wieder von vorne.
+(Medien, die auf anderem Weg am Lautsprecher gestartet wurden, erkennt die Integration nicht.)
+
+**Überblenden (Sonos)** pro Karte: an, aus oder „unverändert“ (Panel, Dienst `assign_card`
+Feld `crossfade`). Die Integration schaltet vor dem Start den Überblenden-Schalter desselben
+Sonos-Geräts; der Wert bleibt danach am Lautsprecher stehen.
 
 **Musik-Modus**: pro Karte einstellbar sind **Zufallswiedergabe** und **Wiederholen**
 (aus/alle/Titel) oder „nicht ändern“. Mit Zufallswiedergabe und eingeschalteter

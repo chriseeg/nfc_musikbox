@@ -164,6 +164,10 @@
           "name": "Wiederholen",
           "description": "Nur Musik-Modus. Leer lassen = Einstellung des Lautsprechers nicht ändern."
         },
+        "crossfade": {
+          "name": "Überblenden",
+          "description": "Sonos-Überblenden zwischen Titeln. Leer lassen = Einstellung des Lautsprechers nicht ändern."
+        },
         "limited": {
           "name": "Tageslimit gilt",
           "description": "Karte zählt zu den Tageslimits der Kindersicherung (Anzahl Hörspiele, Hörzeit)."

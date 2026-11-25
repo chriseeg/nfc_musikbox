@@ -43,6 +43,9 @@ assign_card:
             - "off"
             - all
             - one
+    crossfade:
+      selector:
+        boolean:
     limited:
       default: false
       selector:

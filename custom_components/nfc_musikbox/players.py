@@ -22,6 +22,7 @@ from homeassistant.components.media_player.const import (
     SERVICE_PLAY_MEDIA,
     MediaPlayerEntityFeature,
 )
+from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_SUPPORTED_FEATURES,
@@ -33,7 +34,11 @@ from homeassistant.const import (
     SERVICE_MEDIA_SEEK,
     SERVICE_REPEAT_SET,
     SERVICE_SHUFFLE_SET,
+    SERVICE_TURN_OFF,
+    SERVICE_TURN_ON,
     SERVICE_VOLUME_SET,
+    STATE_OFF,
+    STATE_ON,
     STATE_PAUSED,
     STATE_PLAYING,
 )
@@ -57,6 +62,7 @@ _LOGGER = logging.getLogger(__name__)
 
 SONOS_DOMAIN = "sonos"
 SONOS_SERVICE_PLAY_QUEUE = "play_queue"
+SONOS_CROSSFADE_SUFFIX = "-cross_fade"
 ATTR_QUEUE_POSITION = "queue_position"
 
 # Unterhalb dieser Stelle lohnt kein Spulen, das Medium startet ohnehin dort
@@ -214,6 +220,10 @@ class PlayerBackend:
     async def async_set_repeat(self, repeat: str) -> None:
         await self._call(MP_DOMAIN, SERVICE_REPEAT_SET, **{ATTR_MEDIA_REPEAT: repeat})
 
+    async def async_set_crossfade(self, enabled: bool) -> None:
+        """Überblenden zwischen Titeln; nur Sonos kann das."""
+        _LOGGER.debug("%s: Überblenden wird nicht unterstützt", self.entity_id)
+
     async def async_restore(self, position: Position) -> bool:
         """Nach play_media die gemerkte Stelle anfahren. True bei Erfolg."""
         _LOGGER.info(
@@ -229,6 +239,37 @@ class SonosBackend(PlayerBackend):
 
     async def async_play_queue(self, index: int) -> None:
         await self._call(SONOS_DOMAIN, SONOS_SERVICE_PLAY_QUEUE, queue_position=index)
+
+    def _crossfade_switch(self) -> str | None:
+        """Überblenden-Schalter desselben Sonos-Geräts (Registry, nie geraten)."""
+        registry = er.async_get(self.hass)
+        entry = registry.async_get(self.entity_id)
+        if entry is None or entry.device_id is None:
+            return None
+        for other in er.async_entries_for_device(registry, entry.device_id):
+            if (
+                other.domain == SWITCH_DOMAIN
+                and other.platform == SONOS_DOMAIN
+                and other.unique_id.endswith(SONOS_CROSSFADE_SUFFIX)
+            ):
+                return other.entity_id
+        return None
+
+    async def async_set_crossfade(self, enabled: bool) -> None:
+        switch = self._crossfade_switch()
+        if switch is None:
+            _LOGGER.warning("%s: Überblenden-Schalter nicht gefunden", self.entity_id)
+            return
+        state = self.hass.states.get(switch)
+        if state is not None and state.state == (STATE_ON if enabled else STATE_OFF):
+            return
+        _LOGGER.debug("%s: Überblenden %s", self.entity_id, "an" if enabled else "aus")
+        await self.hass.services.async_call(
+            SWITCH_DOMAIN,
+            SERVICE_TURN_ON if enabled else SERVICE_TURN_OFF,
+            {ATTR_ENTITY_ID: switch},
+            blocking=True,
+        )
 
     async def async_restart(self) -> None:
         """Anfang der Queue, nicht nur des aktuellen Titels."""

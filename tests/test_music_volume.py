@@ -187,7 +187,11 @@ CROSSFADE = "switch.sonos_crossfade"
 
 
 def add_crossfade(hass: HomeAssistant, *, state: str) -> list[tuple[str, str]]:
-    """Überblenden-Schalter am selben Gerät wie der Player; protokolliert die Dienste."""
+    """Überblenden-Schalter am selben Gerät wie der Player; protokolliert die Dienste.
+
+    Nach dem Einrichten der Integration aufrufen, sonst ersetzt deren Schalter-Plattform
+    die Fake-Dienste.
+    """
     sonos_entry = MockConfigEntry(domain="sonos")
     sonos_entry.add_to_hass(hass)
     device = dr.async_get(hass).async_get_or_create(
@@ -215,16 +219,16 @@ def add_crossfade(hass: HomeAssistant, *, state: str) -> list[tuple[str, str]]:
 
 
 async def test_crossfade_on_is_set_before_play(hass: HomeAssistant, player: FakeSonos) -> None:
-    calls = add_crossfade(hass, state="off")
     await setup(hass, Card(A, "M", MEDIA_A, crossfade=True))
+    calls = add_crossfade(hass, state="off")
     await card(hass, A)
     assert calls == [("turn_on", CROSSFADE)]
     assert player.service_names == ["media_player.shuffle_set", "media_player.play_media"]
 
 
 async def test_crossfade_off_is_set(hass: HomeAssistant, player: FakeSonos) -> None:
-    calls = add_crossfade(hass, state="on")
     await setup(hass, Card(A, "M", MEDIA_A, mode="simple", crossfade=False))
+    calls = add_crossfade(hass, state="on")
     await card(hass, A)
     assert calls == [("turn_off", CROSSFADE)]
 
@@ -232,15 +236,15 @@ async def test_crossfade_off_is_set(hass: HomeAssistant, player: FakeSonos) -> N
 async def test_crossfade_already_in_state_is_not_touched(
     hass: HomeAssistant, player: FakeSonos
 ) -> None:
-    calls = add_crossfade(hass, state="on")
     await setup(hass, Card(A, "M", MEDIA_A, crossfade=True))
+    calls = add_crossfade(hass, state="on")
     await card(hass, A)
     assert calls == []
 
 
 async def test_crossfade_unchanged_by_default(hass: HomeAssistant, player: FakeSonos) -> None:
-    calls = add_crossfade(hass, state="on")
     await setup(hass, Card(A, "M", MEDIA_A))
+    calls = add_crossfade(hass, state="on")
     await card(hass, A)
     assert calls == []
     assert Card.from_dict({"tag_id": A}).crossfade is None
